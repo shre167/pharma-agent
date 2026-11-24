@@ -21,11 +21,11 @@ from .prompts import REPORT_SYSTEM_PROMPT
 _EVIDENCE_CAP = 6000
 
 _SECTIONS: list[dict] = [
-    {"number": 1, "title": "Product & formulation identity", "chunk_types": None, "cap": 2500},
+    {"number": 1, "title": "Product & formulation identity", "chunk_types": ("FORMULATION",), "cap": 2500},
     {"number": 2, "title": "Bill of materials", "chunk_types": ("BOM",), "cap": _EVIDENCE_CAP},
     {"number": 3, "title": "Manufacturing process", "chunk_types": ("PROCESS",), "cap": _EVIDENCE_CAP},
     {"number": 4, "title": "Equipment & process parameters", "chunk_types": ("PROCESS",), "cap": _EVIDENCE_CAP},
-    {"number": 5, "title": "Quality attributes", "chunk_types": ("BOM", "PROCESS"), "cap": 4000},
+    {"number": 5, "title": "Quality attributes", "chunk_types": ("BOM", "PROCESS"), "cap": 2500},
 ]
 
 DISCLAIMER_TEXT = (
