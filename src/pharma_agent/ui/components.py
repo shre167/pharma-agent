@@ -124,6 +124,8 @@ def get_runtime() -> Runtime:
         st.stop()
 
     with st.sidebar:
+        from pharma_agent import __version__
+        st.caption(f"Build v{__version__}")
         st.caption(f"LLM: `{runtime.settings.llm_model}`")
         st.caption(f"Embeddings: `{runtime.settings.embedding_model}`")
         st.caption(f"Formulations indexed: **{len({c['metadata']['formulation_id'] for c in runtime.kb.chunks})}** "

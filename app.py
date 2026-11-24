@@ -8,6 +8,7 @@ Run:  streamlit run app.py
 import queue
 import sys
 import threading
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
@@ -27,38 +28,44 @@ st.caption("Turns a curated pharmaceutical handbook into evidence-backed design 
            "with DeepEval, and holds the draft for human approval. Press Enter to generate.")
 
 
-def render_event(stage: str, payload: dict) -> None:
+def elapsed(run_state: dict) -> str:
+    if run_state and run_state.get("t0") is not None:
+        return f" · {time.monotonic() - run_state['t0']:.0f}s in"
+    return ""
+
+
+def render_event(stage: str, payload: dict, run_state: dict | None = None) -> None:
+    when = elapsed(run_state)
     if stage == "scope":
-        stage_line("1", "Scope gate",
-                   f"medicine {payload.get('medicine_mentions')} · handbook ingredient "
-                   f"{payload.get('generic_names')} · confidence {payload.get('confidence')}")
+        text = (f"medicine {payload.get('medicine_mentions')} · handbook ingredient "
+                f"{payload.get('generic_names')} · confidence {payload.get('confidence')}{when}")
+        stage_line("1", "Scope gate", text)
     elif stage == "guard":
-        stage_line("1", "Input guard",
-                   f"{payload.get('action')} — {payload.get('reason')}")
+        stage_line("1", "Input guard", f"{payload.get('action')} — {payload.get('reason')}{when}")
     elif stage == "tool_call":
         args = payload["arguments"]
         label = str(args.get("search_query") or args.get("report_request") or "")[:120]
         focus = args.get("focus")
         focus_txt = f" · focus {focus}" if focus not in (None, "", "all") else ""
         stage_line("1", f"[{payload['index']}/{payload['max']}] {payload['tool']}",
-                   f"{label}{focus_txt} · {payload['result_summary']}")
+                   f"{label}{focus_txt} · {payload['result_summary']}{when}")
     elif stage == "report_start":
         stage_line("1", "Drafting report",
-                   f"{payload.get('evidence_count')} evidence chunks · sections run in parallel")
+                   f"{payload.get('evidence_count')} evidence chunks · sections run in parallel{when}")
     elif stage == "report_section":
-        stage_line("1", f"Section {payload.get('number')} complete", payload.get("title"))
+        stage_line("1", f"Section {payload.get('number')} complete", f"{payload.get('title')}{when}")
     elif stage == "verify":
         if payload.get("stage") == "start":
-            stage_line("2", "Verification", "citations, PDF pages, process claims, LLM claim review")
+            stage_line("2", "Verification", f"citations, PDF pages, process claims, LLM claim review{when}")
         else:
-            stage_line("2", "Verification complete", f"verdict {payload.get('verdict')}")
+            stage_line("2", "Verification complete", f"verdict {payload.get('verdict')}{when}")
     elif stage == "deepeval":
         if payload.get("stage") == "start":
-            stage_line("2", "DeepEval", "scoring faithfulness and retrieval relevancy")
+            stage_line("2", "DeepEval", f"scoring faithfulness and retrieval relevancy{when}")
         else:
             mark = "meets targets" if payload.get("ok") else "below targets"
             note = f" — {payload.get('note')}" if payload.get("note") else ""
-            stage_line("2", "DeepEval complete", f"{mark}{note}")
+            stage_line("2", "DeepEval complete", f"{mark}{note}{when}")
 
 
 def drain_events(run_state) -> None:
@@ -66,7 +73,7 @@ def drain_events(run_state) -> None:
     events = run_state["events"]
     while not events.empty():
         stage, payload = events.get_nowait()
-        render_event(stage, payload)
+        render_event(stage, payload, run_state)
 
 
 def finalize(run_state, status=None) -> None:
@@ -88,7 +95,7 @@ def poll_until_done(run_state, status) -> None:
             stage, payload = events.get(timeout=0.25)
         except queue.Empty:
             continue
-        render_event(stage, payload)
+        render_event(stage, payload, run_state)
     drain_events(run_state)
     finalize(run_state, status)
 
@@ -121,7 +128,7 @@ with st.form("request_form"):
 
 if submitted and query.strip():
     run_state = {"query": query, "events": queue.Queue(), "result": None, "error": None,
-                 "pending_render": False, "thread": None}
+                 "pending_render": False, "thread": None, "t0": time.monotonic()}
     st.session_state["run_state"] = run_state
 
     def worker() -> None:
