@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -225,12 +226,20 @@ def measure_report_quality(llm_chat: Callable, query: str, report: str,
                 "note": "No report text or retrieved context to evaluate."}
     try:
         judge = _make_judge(llm_chat)
-        test_case = LLMTestCase(input=query, actual_output=report,
-                                retrieval_context=list(evidence_texts))
-        fm = FaithfulnessMetric(threshold=EVAL_TARGETS["faithfulness"], model=judge, async_mode=False)
-        fm.measure(test_case)
-        rm = ContextualRelevancyMetric(threshold=EVAL_TARGETS["retrieval_relevancy"], model=judge, async_mode=False)
-        rm.measure(test_case)
+
+        def measure(metric_cls, threshold):
+            case = LLMTestCase(input=query, actual_output=report,
+                               retrieval_context=list(evidence_texts))
+            metric = metric_cls(threshold=threshold, model=judge, async_mode=False)
+            metric.measure(case)
+            return metric
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            faithfuture = pool.submit(measure, FaithfulnessMetric, EVAL_TARGETS["faithfulness"])
+            relevancyfuture = pool.submit(measure, ContextualRelevancyMetric,
+                                          EVAL_TARGETS["retrieval_relevancy"])
+            fm = faithfuture.result()
+            rm = relevancyfuture.result()
         faithfulness = round(float(fm.score), 3)
         relevancy = round(float(rm.score), 3)
         return {"faithfulness": faithfulness, "target_faithfulness": EVAL_TARGETS["faithfulness"],

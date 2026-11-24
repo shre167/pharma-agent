@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Optional
 
 from langsmith import traceable
@@ -66,20 +67,23 @@ def _generate(runtime, query: str, run_id: str, origin: str, on_event: EventFn) 
         return early(status, scope=scope, answer=agent_result.get("answer", ""),
                      wave1_status=agent_result.get("status"), tool_calls=agent_result.get("tool_calls", []))
 
-    # 4. Verification of the exact draft (deterministic checks + LLM claim review + DeepEval).
+    # 4. Verification and DeepEval are independent of each other (both read the same draft
+    # and evidence), so they run concurrently; the report itself gates them.
     report_text, selected = capture["text"], capture["selected"]
     emit("verify", {"stage": "start"})
-    verdict, checks, ai_review = verify_report(runtime.services.llm_chat, report_text, selected)
-    emit("verify", {"stage": "done", "verdict": verdict})
-    status = "REPORT_GENERATED_PENDING_REVIEW" if verdict == "PASS" else "REPORT_GENERATED_NEEDS_REVIEW"
-
     emit("deepeval", {"stage": "start"})
     from .evaluation import measure_report_quality   # deferred: evaluation imports this module
 
-    deepeval = measure_report_quality(
-        runtime.services.llm_chat, query, report_text,
-        [e.get("text", "") for e in selected])
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        verify_future = pool.submit(verify_report, runtime.services.llm_chat, report_text, selected)
+        deepeval_future = pool.submit(
+            measure_report_quality, runtime.services.llm_chat, query, report_text,
+            [e.get("text", "") for e in selected])
+        verdict, checks, ai_review = verify_future.result()
+        deepeval = deepeval_future.result()
+    emit("verify", {"stage": "done", "verdict": verdict})
     emit("deepeval", {"stage": "done", "ok": deepeval["ok"], "note": deepeval["note"]})
+    status = "REPORT_GENERATED_PENDING_REVIEW" if verdict == "PASS" else "REPORT_GENERATED_NEEDS_REVIEW"
 
     # 5. Persist report + evidence manifest.
     report_id = run_id

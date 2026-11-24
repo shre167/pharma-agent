@@ -1,5 +1,8 @@
 """Streamlit entry point: request -> agent -> verification -> human review.
 
+The generation thread lives in st.session_state, so starting a run and coming back
+after navigating to another app page re-attaches to the same run instead of dropping it.
+
 Run:  streamlit run app.py
 """
 import queue
@@ -18,102 +21,122 @@ from pharma_agent.wave2.pipeline import run_generation  # noqa: E402
 setup_page("Generate report")
 runtime = get_runtime()
 
-EXAMPLES = [
-    ("Named medicine", "Guide me through the design of the manufacturing process for acetaminophen 500 mg immediate-release tablets."),
-    ("Brand name", "Prepare a manufacturing design report for Dolo 650."),
-    ("Description", "Prepare a report for a white round fever tablet."),
-    ("General question", "How is a wet-granulation tablet line designed and validated?"),
-]
-
 st.markdown("## Pharma Manufacturing Design Report Agent")
 st.caption("Turns a curated pharmaceutical handbook into evidence-backed design drafts. Wave 1 runs the gated "
            "retrieval agent and writes the sectioned, cited report; Wave 2 verifies every claim, scores it "
-           "with DeepEval, and holds the draft for human approval.")
+           "with DeepEval, and holds the draft for human approval. Press Enter to generate.")
 
-st.session_state.setdefault("query_text", "")
-chip_cols = st.columns(len(EXAMPLES))
-for (label, text), col in zip(EXAMPLES, chip_cols):
-    if col.button(label, key=f"example_{label}", use_container_width=True):
-        st.session_state["query_text"] = text
-        st.rerun()
 
-st.divider()
+def render_event(stage: str, payload: dict) -> None:
+    if stage == "scope":
+        stage_line("1", "Scope gate",
+                   f"medicine {payload.get('medicine_mentions')} · handbook ingredient "
+                   f"{payload.get('generic_names')} · confidence {payload.get('confidence')}")
+    elif stage == "guard":
+        stage_line("1", "Input guard",
+                   f"{payload.get('action')} — {payload.get('reason')}")
+    elif stage == "tool_call":
+        args = payload["arguments"]
+        label = str(args.get("search_query") or args.get("report_request") or "")[:120]
+        focus = args.get("focus")
+        focus_txt = f" · focus {focus}" if focus not in (None, "", "all") else ""
+        stage_line("1", f"[{payload['index']}/{payload['max']}] {payload['tool']}",
+                   f"{label}{focus_txt} · {payload['result_summary']}")
+    elif stage == "report_start":
+        stage_line("1", "Drafting report",
+                   f"{payload.get('evidence_count')} evidence chunks · sections run in parallel")
+    elif stage == "report_section":
+        stage_line("1", f"Section {payload.get('number')} complete", payload.get("title"))
+    elif stage == "verify":
+        if payload.get("stage") == "start":
+            stage_line("2", "Verification", "citations, PDF pages, process claims, LLM claim review")
+        else:
+            stage_line("2", "Verification complete", f"verdict {payload.get('verdict')}")
+    elif stage == "deepeval":
+        if payload.get("stage") == "start":
+            stage_line("2", "DeepEval", "scoring faithfulness and retrieval relevancy")
+        else:
+            mark = "meets targets" if payload.get("ok") else "below targets"
+            note = f" — {payload.get('note')}" if payload.get("note") else ""
+            stage_line("2", "DeepEval complete", f"{mark}{note}")
 
-query = st.text_area("Report request", key="query_text", height=110,
-                     placeholder="Name a medicine (brand or generic), describe one, or ask a general "
-                                 "pharmaceutical manufacturing question...")
 
-if st.button("Generate draft report", type="primary", disabled=not query.strip()):
-    with st.status("Running pipeline...", expanded=True) as status:
-        # Pipeline callbacks fire from LangGraph worker threads as well as this one;
-        # Streamlit commands must stay on the script thread, so events travel via a
-        # queue and are rendered from the poll loop below.
-        events: queue.Queue = queue.Queue()
+def drain_events(run_state) -> None:
+    """Render events buffered while the run finished on its own (e.g. another page was open)."""
+    events = run_state["events"]
+    while not events.empty():
+        stage, payload = events.get_nowait()
+        render_event(stage, payload)
 
-        def on_event(stage: str, payload: dict) -> None:
-            events.put((stage, payload))
 
-        def render_event(stage: str, payload: dict) -> None:
-            if stage == "scope":
-                stage_line("1", "Scope gate",
-                           f"medicine {payload.get('medicine_mentions')} · handbook ingredient "
-                           f"{payload.get('generic_names')} · confidence {payload.get('confidence')}")
-            elif stage == "guard":
-                stage_line("1", "Input guard",
-                           f"{payload.get('action')} — {payload.get('reason')}")
-            elif stage == "tool_call":
-                args = payload["arguments"]
-                label = str(args.get("search_query") or args.get("report_request") or "")[:120]
-                focus = args.get("focus")
-                focus_txt = f" · focus {focus}" if focus not in (None, "", "all") else ""
-                stage_line("1", f"[{payload['index']}/{payload['max']}] {payload['tool']}",
-                           f"{label}{focus_txt} · {payload['result_summary']}")
-            elif stage == "report_start":
-                stage_line("1", "Drafting report",
-                           f"{payload.get('evidence_count')} evidence chunks · sections run in parallel")
-            elif stage == "report_section":
-                stage_line("1", f"Section {payload.get('number')} complete", payload.get("title"))
-            elif stage == "verify":
-                if payload.get("stage") == "start":
-                    stage_line("2", "Verification", "citations, PDF pages, process claims, LLM claim review")
-                else:
-                    stage_line("2", "Verification complete", f"verdict {payload.get('verdict')}")
-            elif stage == "deepeval":
-                if payload.get("stage") == "start":
-                    stage_line("2", "DeepEval", "scoring faithfulness and retrieval relevancy")
-                else:
-                    mark = "meets targets" if payload.get("ok") else "below targets"
-                    note = f" — {payload.get('note')}" if payload.get("note") else ""
-                    stage_line("2", "DeepEval complete", f"{mark}{note}")
-
-        run_result: dict = {}
-        run_error: list = []
-
-        def run_pipeline() -> None:
-            try:
-                run_result["value"] = run_generation(runtime, query, on_event=on_event)
-            except Exception as exc:  # noqa: BLE001
-                run_error.append(exc)
-
-        worker = threading.Thread(target=run_pipeline, name="pharma-run", daemon=True)
-        worker.start()
-        while worker.is_alive():
-            try:
-                stage, payload = events.get(timeout=0.25)
-            except queue.Empty:
-                continue
-            render_event(stage, payload)
-        while not events.empty():
-            stage, payload = events.get_nowait()
-            render_event(stage, payload)
-
-        if run_error:
+def finalize(run_state, status=None) -> None:
+    if run_state.get("error"):
+        if status is not None:
             status.update(label="Run failed", state="error")
-            st.error(f"Run failed: {run_error[0]!r}")
-            st.stop()
-        result = run_result["value"]
-        status.update(label=f"Finished: {result['status']}", state="complete", expanded=False)
-    st.session_state["last_result"] = result
+        st.error(f"Run failed: {run_state['error']!r}")
+        return
+    if status is not None:
+        status.update(label=f"Finished: {run_state['result']['status']}", state="complete", expanded=False)
+    st.session_state["last_result"] = run_state["result"]
+    run_state["pending_render"] = False
+
+
+def poll_until_done(run_state, status) -> None:
+    events = run_state["events"]
+    while run_state["thread"].is_alive():
+        try:
+            stage, payload = events.get(timeout=0.25)
+        except queue.Empty:
+            continue
+        render_event(stage, payload)
+    drain_events(run_state)
+    finalize(run_state, status)
+
+
+run_state = st.session_state.get("run_state")
+
+if run_state and run_state["thread"].is_alive():
+    with st.status("Pipeline running for a previous request — you can visit other pages and come back.",
+                   expanded=True) as status:
+        st.caption(run_state["query"])
+        poll_until_done(run_state, status)
+elif run_state and run_state.get("pending_render") and run_state["result"] is not None:
+    with st.status(f"Finished: {run_state['result'].get('status')}", expanded=False):
+        st.caption(run_state["query"])
+    drain_events(run_state)
+    finalize(run_state)
+elif run_state and run_state.get("pending_render") and run_state.get("error"):
+    st.error(f"Run failed: {run_state['error']!r}")
+    run_state["pending_render"] = False
+    run_state = None
+
+running = bool(run_state and run_state["thread"].is_alive())
+
+with st.form("request_form"):
+    query = st.text_input(
+        "Report request", key="query_text",
+        placeholder="Name a medicine (brand or generic), describe one, or ask a general pharmaceutical "
+                    "manufacturing question — press Enter to generate")
+    submitted = st.form_submit_button("Generate draft report", type="primary", disabled=running)
+
+if submitted and query.strip():
+    run_state = {"query": query, "events": queue.Queue(), "result": None, "error": None,
+                 "pending_render": False, "thread": None}
+    st.session_state["run_state"] = run_state
+
+    def worker() -> None:
+        try:
+            run_state["result"] = run_generation(runtime, run_state["query"])
+            run_state["pending_render"] = True
+        except Exception as exc:  # noqa: BLE001
+            run_state["error"] = exc
+            run_state["pending_render"] = True
+
+    run_state["thread"] = threading.Thread(target=worker, name="pharma-run", daemon=True)
+    run_state["thread"].start()
+
+    with st.status("Running pipeline...", expanded=True) as status:
+        poll_until_done(run_state, status)
 
 result = st.session_state.get("last_result")
 if result:
