@@ -80,7 +80,15 @@ def finalize(run_state, status=None) -> None:
     if run_state.get("error"):
         if status is not None:
             status.update(label="Run failed", state="error")
-        st.error(f"Run failed: {run_state['error']!r}")
+        text = repr(run_state["error"])
+        last_stage = run_state.get("last_stage")
+        at = f" at the {last_stage} stage" if last_stage else ""
+        if "PermissionDenied" in text or "403" in text:
+            st.error(f"Run failed{at}: {text}\n\nThe LLM gateway rejected the request (403). "
+                     "Check that your GE_API_KEY is valid, active and entitled for this model, "
+                     "then re-enter it in the sidebar and retry.")
+        else:
+            st.error(f"Run failed{at}: {text}")
         return
     if status is not None:
         status.update(label=f"Finished: {run_state['result']['status']}", state="complete", expanded=False)
@@ -131,9 +139,13 @@ if submitted and query.strip():
                  "pending_render": False, "thread": None, "t0": time.monotonic()}
     st.session_state["run_state"] = run_state
 
+    def on_event(stage: str, payload: dict) -> None:
+        run_state["last_stage"] = stage
+        run_state["events"].put((stage, payload))
+
     def worker() -> None:
         try:
-            run_state["result"] = run_generation(runtime, run_state["query"])
+            run_state["result"] = run_generation(runtime, run_state["query"], on_event=on_event)
             run_state["pending_render"] = True
         except Exception as exc:  # noqa: BLE001
             run_state["error"] = exc
