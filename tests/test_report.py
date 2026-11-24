@@ -31,12 +31,16 @@ def recording_llm(calls: list, reply: str):
 
 def test_sections_use_separate_calls_with_routed_evidence(tmp_path):
     calls: list = []
+    progress: list = []
     reply = "Cited content [E1] [SOURCE: handbook.pdf, PDF page 1]"
     report, path = generate_report(recording_llm(calls, reply), "design report", SELECTED,
-                                   CLASSIFICATION, tmp_path / "out.md")
+                                   CLASSIFICATION, tmp_path / "out.md",
+                                   progress=lambda s, p: progress.append((s, p)))
 
     assert len(calls) == 6, "five content sections + one evidence-gap call"
     assert all(system == prompts.REPORT_SYSTEM_PROMPT for system, _ in calls)
+    assert [p["number"] for s, p in progress if s == "report_section"] == [1, 2, 3, 4, 5]
+    assert all(s == "report_section" for s, _ in progress)
 
     bom_msgs = [user for _, user in calls if "section 2. Bill of materials" in user]
     assert bom_msgs and BOM_TEXT in bom_msgs[0] and "Compress" not in bom_msgs[0]

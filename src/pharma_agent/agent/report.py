@@ -77,10 +77,14 @@ def _section_rules(number: int, title: str) -> str:
             "inventing content.\n")
 
 
+ProgressFn = Optional[Callable[[str, dict], None]]
+
+
 @traceable(name="wave1_report_generation", run_type="chain",
            process_inputs=trace_inputs, process_outputs=trace_output)
 def generate_report(llm_chat: Callable, report_request: str, selected: list[dict],
-                    classification: dict, output_file: Path) -> tuple[str, str]:
+                    classification: dict, output_file: Path,
+                    progress: ProgressFn = None) -> tuple[str, str]:
     """Build a cited Markdown report from selected evidence; returns (report_text, saved_path)."""
     parts: list[str] = [f"# {classification.get('report_title')}\n"]
     coverage: list[str] = []
@@ -105,6 +109,8 @@ def generate_report(llm_chat: Callable, report_request: str, selected: list[dict
             failures.append(f"- Section {number}. {title} could not be generated: {exc}")
             continue
         parts.append(f"## {number}. {title}\n\n{body}".rstrip() + "\n")
+        if progress:
+            progress("report_section", {"number": number, "title": title, "index": len(parts) - 1})
 
     gaps_msg = (
         _header(report_request, classification)

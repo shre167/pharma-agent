@@ -25,6 +25,11 @@ class AgentSession:
     capture: Optional[dict] = None   # {"text", "path", "selected"} of the generated report
     on_event: Optional[Callable[[str, dict], None]] = None
 
+    def emit_progress(self, stage: str, payload: dict) -> None:
+        """Forward report-stage progress; the receiver must be thread-safe."""
+        if self.on_event:
+            self.on_event(stage, payload)
+
     # ---- find_documents ------------------------------------------------
     def find_documents(self, search_query: str, top_k: int = 5, focus: str = "all",
                        alternate_names: Optional[List[str]] = None) -> dict:
@@ -94,7 +99,8 @@ class AgentSession:
             })
         stub = re.sub(r"[^A-Za-z0-9_-]+", "_", report_title or "pharma_design_report").strip("_")[:60] or "report"
         output_path = self.wave1_dir / f"{stub}_{time.strftime('%Y%m%d_%H%M%S')}.md"
-        report, saved_path = self.report_writer(report_request, selected, classification, output_path)
+        report, saved_path = self.report_writer(report_request, selected, classification, output_path,
+                                                progress=self.emit_progress)
         self.capture = {"text": report, "path": saved_path, "selected": selected}
         return {
             "status": "REPORT_GENERATED", "path": saved_path,

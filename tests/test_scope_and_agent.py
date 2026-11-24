@@ -59,7 +59,7 @@ def test_strip_followups_removes_offers_and_questions():
 def _session(small_kb, allowed=True):
     calls = []
 
-    def writer(request, selected, classification, path):
+    def writer(request, selected, classification, path, progress=None):
         calls.append((request, len(selected)))
         return "REPORT [E1] [SOURCE: handbook.pdf, PDF page 1]", str(path)
 

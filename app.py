@@ -2,7 +2,9 @@
 
 Run:  streamlit run app.py
 """
+import queue
 import sys
+import threading
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
@@ -27,7 +29,15 @@ query = st.text_area("Your request", key="query_text", height=130,
 
 if st.button("Generate report", type="primary", disabled=not query.strip()):
     with st.status("Running agent...", expanded=True) as status:
+        # Pipeline callbacks fire from LangGraph worker threads as well as this one;
+        # Streamlit commands must stay on the script thread, so events travel via a
+        # queue and are rendered from the poll loop below.
+        events: queue.Queue = queue.Queue()
+
         def on_event(stage: str, payload: dict) -> None:
+            events.put((stage, payload))
+
+        def render_event(stage: str, payload: dict) -> None:
             if stage == "scope":
                 st.write(f"**Scope gate** → medicine: `{payload.get('medicine_mentions')}` · handbook ingredient: "
                          f"`{payload.get('generic_names')}` · confidence: `{payload.get('confidence')}`")
@@ -46,13 +56,33 @@ if st.button("Generate report", type="primary", disabled=not query.strip()):
                 elif payload.get("stage") == "done":
                     st.write(f"**Verification complete** → Verdict: `{payload.get('verdict')}`")
 
-        try:
-            result = run_generation(runtime, query, on_event=on_event)
-            status.update(label=f"Finished: {result['status']}", state="complete", expanded=False)
-        except Exception as exc:  # noqa: BLE001
+        run_result: dict = {}
+        run_error: list = []
+
+        def run_pipeline() -> None:
+            try:
+                run_result["value"] = run_generation(runtime, query, on_event=on_event)
+            except Exception as exc:  # noqa: BLE001
+                run_error.append(exc)
+
+        worker = threading.Thread(target=run_pipeline, name="pharma-run", daemon=True)
+        worker.start()
+        while worker.is_alive():
+            try:
+                stage, payload = events.get(timeout=0.25)
+            except queue.Empty:
+                continue
+            render_event(stage, payload)
+        while not events.empty():
+            stage, payload = events.get_nowait()
+            render_event(stage, payload)
+
+        if run_error:
             status.update(label="Run failed", state="error")
-            st.error(f"Run failed: {exc!r}")
+            st.error(f"Run failed: {run_error[0]!r}")
             st.stop()
+        result = run_result["value"]
+        status.update(label=f"Finished: {result['status']}", state="complete", expanded=False)
     st.session_state["last_result"] = result
 
 result = st.session_state.get("last_result")
