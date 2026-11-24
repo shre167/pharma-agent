@@ -1,4 +1,4 @@
-"""Verify Capgemini chat, Titan embeddings and chat tool-calling before running the app."""
+"""Verify chat, embeddings and chat tool-calling against the configured endpoints before running the app."""
 from __future__ import annotations
 
 import sys
@@ -14,6 +14,7 @@ def main() -> int:
     settings = load_settings()
     print("LLM endpoint:", settings.llm_base_url)
     print("LLM model:", settings.llm_model)
+    print("Embedding endpoint:", settings.embedding_base_url)
     print("Embedding model:", settings.embedding_model)
     print("Docs dir:", settings.docs_dir, "| PDFs:", [p.name for p in settings.docs_dir.glob('*.pdf')])
     if not settings.has_api_key:

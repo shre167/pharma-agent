@@ -24,24 +24,34 @@ class OpenAICompatEmbeddings(Embeddings):
         self.batch_size = batch_size
         self.show_progress = show_progress
 
+    @staticmethod
+    def _vectors(response, model: str, count: int) -> list[list[float]]:
+        data = getattr(response, "data", None)
+        if data is None:
+            raise RuntimeError(
+                f"The embeddings endpoint returned an unexpected response for model '{model}': "
+                f"{str(response)[:200]!r}. EMBEDDING_BASE_URL/EMBEDDING_MODEL must be reachable "
+                "without an intercepting proxy and serve an OpenAI-compatible /embeddings API.")
+        vectors = [item.embedding for item in data]
+        if len(vectors) != count:
+            raise RuntimeError(f"The embeddings endpoint returned {len(vectors)} vectors for {count} texts.")
+        return vectors
+
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         vectors: list[list[float]] = []
         starts = range(0, len(texts), self.batch_size)
         if self.show_progress:
-            starts = tqdm(starts, desc="Titan embeddings")
+            starts = tqdm(starts, desc="Embedding chunks")
         for start in starts:
             batch = texts[start:start + self.batch_size]
             response = self.api_client.embeddings.create(model=self.model, input=batch)
-            batch_vectors = [item.embedding for item in response.data]
-            if len(batch_vectors) != len(batch):
-                raise RuntimeError(f"Titan returned {len(batch_vectors)} vectors for {len(batch)} texts.")
-            vectors.extend(batch_vectors)
+            vectors.extend(self._vectors(response, self.model, len(batch)))
             time.sleep(0.05)
         return vectors
 
     def embed_query(self, text: str) -> list[float]:
         response = self.api_client.embeddings.create(model=self.model, input=[text])
-        return response.data[0].embedding
+        return self._vectors(response, self.model, 1)[0]
 
 
 @traceable(name="capgemini_chat_call", run_type="llm", process_inputs=trace_inputs, process_outputs=trace_output)
