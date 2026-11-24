@@ -96,20 +96,25 @@ Return ONLY valid JSON with keys:
 
 Rules:
 - Description-based identification IS fully supported. Do not require the ingredient name to occur
-  literally in the user's wording. Map described indications or classes to the matching
-  HANDBOOK_INGREDIENTS (e.g., pain/fever/headache -> acetaminophen, ibuprofen, acetylsalicylic acid;
-  allergy -> chlorpheniramine; cough/cold -> dextromethorphan, pseudoephedrine; etc.).
-- confidence high means the description UNIQUELY identifies ONE handbook ingredient (e.g.
-  'non-opioid analgesic and antipyretic' -> acetaminophen; NSAID -> ibuprofen or acetylsalicylic acid).
-  A generic shape such as 'white round fever tablet' that fits several ingredients is NOT unique:
-  return all plausible fits in candidate_ingredients, leave matched_handbook_ingredients empty,
-  and set confidence low.
+  literally in the user's wording. Map described indications, classes, or formulation attributes to
+  the matching HANDBOOK_INGREDIENTS (e.g., pain/fever/headache -> acetaminophen, ibuprofen,
+  acetylsalicylic acid; allergy -> chlorpheniramine; cough/cold -> dextromethorphan; etc.).
+- A substantive description MUST be addressed: when it contains at least one distinguishing
+  attribute (chemical class, therapeutic class, dosage form, release type, manufacturing technique
+  such as wet granulation or direct compression, strength, or combination context), resolve it —
+  put EVERY handbook ingredient that satisfies every stated attribute into
+  matched_handbook_ingredients, set identification_method to description, and use confidence high
+  when exactly one ingredient survives or medium when several survive (several matches are valid:
+  the caller covers each variant separately and records the ambiguity).
+- Vague descriptions fail closed. If the description carries no distinguishing attribute beyond a
+  generic appearance or a broad indication (e.g. only 'white round tablet for fever') that could
+  apply to several unrelated products, return the plausible ones in candidate_ingredients, leave
+  matched_handbook_ingredients empty, and set confidence low.
 - Every candidate must satisfy EVERY qualifier the user stated. An ingredient that contradicts a
   stated qualifier (chemical class/type, therapeutic class, use, release type) is excluded even as
   a candidate. Example: 'piperazine-type anthelmintic' excludes mebendazole, albendazole and
   pyrantel (different chemical classes); only piperazine salt entries qualify as candidates.
-- Do not select a primary match when several ingredients fit equally well. Arbitrarily resolving
-  ambiguity is prohibited; the caller decides.
+- Never invent or guess ingredients that are not in HANDBOOK_INGREDIENTS.
 - For general pharmaceutical manufacturing, formulation, excipient, or processing questions,
   set is_medicine_request to true and identification_method to general_pharma.
 - Resolve brand names and regional generic terms to the chemical ingredient using your own

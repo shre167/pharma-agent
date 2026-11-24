@@ -65,20 +65,25 @@ def test_description_supports_matches_and_candidates():
     assert scope["generic_names"] == ["acetaminophen"] and scope["is_medicine_request"]
 
 
-def test_ambiguous_description_fails_closed_and_reports_candidates():
-    # Live regression: 'white round fever tablet' -> single pick at medium confidence must NOT open the gate.
+def test_substantive_descriptions_run_even_when_several_variants_match():
     medium = fake_llm({"matched_handbook_ingredients": ["acetaminophen"],
-                       "candidate_ingredients": ["acetaminophen", "ibuprofen"],
                        "identification_method": "description", "confidence": "medium"})
-    scope = check_scope(VOCAB, medium, "prepare a report for a white round fever tablet")
-    assert scope["generic_names"] == [] and not scope["is_medicine_request"]
-    assert "not conclusive" in scope["reason"] and "ibuprofen" in scope["reason"]
+    scope = check_scope(VOCAB, medium, "report for a wet-granulated immediate-release fever tablet")
+    assert scope["generic_names"] == ["acetaminophen"] and scope["is_medicine_request"]
 
     multi = fake_llm({"matched_handbook_ingredients": ["acetaminophen", "ibuprofen"],
-                      "identification_method": "description", "confidence": "high"})
-    scope = check_scope(VOCAB, multi, "pain tablet")
+                      "identification_method": "description", "confidence": "medium"})
+    scope = check_scope(VOCAB, multi, "report for an immediate-release analgesic tablet")
+    assert scope["generic_names"] == ["acetaminophen", "ibuprofen"] and scope["is_medicine_request"]
+
+
+def test_vague_descriptions_fail_closed_and_report_candidates():
+    vague = fake_llm({"matched_handbook_ingredients": [],
+                      "candidate_ingredients": ["acetaminophen", "ibuprofen"],
+                      "identification_method": "description", "confidence": "low"})
+    scope = check_scope(VOCAB, vague, "prepare a report for a white round fever tablet")
     assert scope["generic_names"] == [] and not scope["is_medicine_request"]
-    assert "not conclusive" in scope["reason"]
+    assert "too vague" in scope["reason"] and "ibuprofen" in scope["reason"]
 
     low = fake_llm({"matched_handbook_ingredients": ["acetaminophen"],
                     "identification_method": "description", "confidence": "low"})

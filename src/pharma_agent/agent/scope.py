@@ -83,14 +83,16 @@ def check_scope(vocab: dict, llm_chat: LLMChat, query: str) -> dict:
         is_medicine = False
         inconclusive = "The description was too vague to identify a medicine."
     elif method == "description":
-        # Description-based identity must be conclusive: one ingredient, high confidence.
-        # Otherwise fail closed and surface the candidates instead of picking one.
-        if confidence == "high" and len(matched) == 1:
+        # Vague descriptions fail closed. Substantive descriptions resolve to one or more
+        # handbook ingredients; when several match, the agent covers every variant and
+        # records the ambiguity as an evidence gap instead of the gate refusing.
+        if matched and confidence in {"high", "medium"}:
             verified = matched
         else:
             verified = []
-            inconclusive = ("The description was not conclusive. Candidates considered: "
-                            + ", ".join(candidates or matched) + ". Please name the medicine explicitly.")
+            inconclusive = ("The description was too vague to identify a handbook ingredient. "
+                            "Candidates considered: " + ", ".join(candidates or matched)
+                            + ". Please describe the medicine more specifically or name it.")
         is_medicine = bool(verified)
     elif method == "general_pharma":
         verified = matched
