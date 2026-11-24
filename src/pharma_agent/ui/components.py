@@ -1,6 +1,7 @@
 """Shared Streamlit components: runtime loading, report detail view and the review form."""
 from __future__ import annotations
 
+import html
 from dataclasses import replace
 
 import pandas as pd
@@ -19,8 +20,39 @@ STATUS_COLOURS = {
 }
 
 
+_PAGE_CSS = """
+<style>
+    .block-container {padding-top: 1.1rem; max-width: 1080px;}
+    h1, h2 {letter-spacing: -0.02em;}
+    .stage-line {display:flex; align-items:baseline; gap:0.6rem; padding:0.3rem 0.75rem;
+                 margin:0.15rem 0; border-left:3px solid transparent;
+                 border-radius:0 0.35rem 0.35rem 0; font-size:0.87rem; line-height:1.5;
+                 background:rgba(128,128,128,0.07);}
+    .wave-tag {flex:0 0 auto; font-size:0.62rem; font-weight:700; letter-spacing:0.09em;
+               padding:0.12rem 0.5rem; border-radius:999px; align-self:center;}
+    .wave-1 {border-left-color:#1A56DB;}
+    .wave-1 .wave-tag {background:#E8F0FE; color:#1A56DB;}
+    .wave-2 {border-left-color:#046C4E;}
+    .wave-2 .wave-tag {background:#DEF7EC; color:#046C4E;}
+    .stage-title {font-weight:600; flex:0 0 auto;}
+    .stage-detail {color:rgba(90,95,110,1); word-break:break-word;}
+</style>
+"""
+
+
 def setup_page(title: str, icon: str | None = None) -> None:
     st.set_page_config(page_title=f"{title} · Pharma Design Agent", page_icon=icon, layout="wide")
+    st.markdown(_PAGE_CSS, unsafe_allow_html=True)
+
+
+def stage_line(wave: str, title: str, detail: str = "") -> None:
+    """One pipeline progress row; escapes untrusted detail text."""
+    detail_html = html.escape(str(detail)) if detail else ""
+    st.markdown(
+        f'<div class="stage-line wave-{wave}"><span class="wave-tag">WAVE {wave}</span>'
+        f'<span class="stage-title">{html.escape(str(title))}</span>'
+        + (f'<span class="stage-detail">{detail_html}</span>' if detail_html else "")
+        + "</div>", unsafe_allow_html=True)
 
 
 def status_label(status: str) -> str:
@@ -149,10 +181,19 @@ def render_report_detail(settings, report_id: str, key: str) -> None:
     """Report, verification, evidence, tool trace and the human review form."""
     manifest, report_text = load_report(settings, report_id)
     status = manifest["status"]
-    c1, c2, c3 = st.columns([3, 1, 1])
-    c1.markdown(f"**Status:** {status_label(status)}  ·  **Auto-verdict:** `{manifest['output_verdict']}`")
-    c2.caption(f"Latency {manifest.get('latency_s')} s")
-    c3.caption(f"ID `{report_id[:8]}`")
+    checks = manifest.get("checks", [])
+    passed = sum(1 for c in checks if c["passed"])
+    issues = (manifest.get("llm_review") or {}).get("issues") or []
+    deepeval = manifest.get("deepeval") or {}
+
+    c1, c2, c3, c4, c5, c6 = st.columns([2.4, 1, 1, 1, 1, 1.4])
+    c1.markdown(f"{status_label(status)}\n\nID `{report_id[:8]}`")
+    c2.metric("Checks", f"{passed}/{len(checks)}")
+    c3.metric("Flagged claims", len(issues))
+    c4.metric("Evidence", len(manifest.get("evidence", [])))
+    c5.metric("Latency", f"{manifest.get('latency_s')} s")
+    c6.metric("DeepEval faithfulness",
+              "—" if deepeval.get("faithfulness") is None else f"{deepeval['faithfulness']:.3f}")
     if manifest.get("trace_url"):
         st.markdown(f"[Open LangSmith trace]({manifest['trace_url']})")
     st.caption("Pipeline · Wave 1: scope gate → input guard → retrieval agent → sectioned report"

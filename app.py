@@ -12,24 +12,39 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 import streamlit as st  # noqa: E402
 
 from pharma_agent.ui.components import (  # noqa: E402
-    get_runtime, render_report_detail, render_tool_trace, setup_page, status_label)
+    get_runtime, render_report_detail, render_tool_trace, setup_page, stage_line, status_label)
 from pharma_agent.wave2.pipeline import run_generation  # noqa: E402
 
 setup_page("Generate report")
 runtime = get_runtime()
 
-st.title("Pharma Manufacturing Design Report Agent")
-st.caption("Wave 1 (agent, RAG, citations):  scope gate → input guard → retrieval agent → sectioned report  ·  "
-           "Wave 2 (verification, evaluation, safety): verification → DeepEval → human review.  "
-           "Evidence-backed drafts from the handbook; every draft needs human review.")
+EXAMPLES = [
+    ("Named medicine", "Guide me through the design of the manufacturing process for acetaminophen 500 mg immediate-release tablets."),
+    ("Brand name", "Prepare a manufacturing design report for Dolo 650."),
+    ("Description", "Prepare a report for a white round fever tablet."),
+    ("General question", "How is a wet-granulation tablet line designed and validated?"),
+]
+
+st.markdown("## Pharma Manufacturing Design Report Agent")
+st.caption("Turns a curated pharmaceutical handbook into evidence-backed design drafts. Wave 1 runs the gated "
+           "retrieval agent and writes the sectioned, cited report; Wave 2 verifies every claim, scores it "
+           "with DeepEval, and holds the draft for human approval.")
 
 st.session_state.setdefault("query_text", "")
+chip_cols = st.columns(len(EXAMPLES))
+for (label, text), col in zip(EXAMPLES, chip_cols):
+    if col.button(label, key=f"example_{label}", use_container_width=True):
+        st.session_state["query_text"] = text
+        st.rerun()
 
-query = st.text_area("Your request", key="query_text", height=130,
-                     placeholder="Enter any pharmaceutical manufacturing question, describe a medicine (by indication/purpose), or name a formulation...")
+st.divider()
 
-if st.button("Generate report", type="primary", disabled=not query.strip()):
-    with st.status("Running agent...", expanded=True) as status:
+query = st.text_area("Report request", key="query_text", height=110,
+                     placeholder="Name a medicine (brand or generic), describe one, or ask a general "
+                                 "pharmaceutical manufacturing question...")
+
+if st.button("Generate draft report", type="primary", disabled=not query.strip()):
+    with st.status("Running pipeline...", expanded=True) as status:
         # Pipeline callbacks fire from LangGraph worker threads as well as this one;
         # Streamlit commands must stay on the script thread, so events travel via a
         # queue and are rendered from the poll loop below.
@@ -40,32 +55,36 @@ if st.button("Generate report", type="primary", disabled=not query.strip()):
 
         def render_event(stage: str, payload: dict) -> None:
             if stage == "scope":
-                st.write(f"**Wave 1 · Scope gate** → medicine: `{payload.get('medicine_mentions')}` · handbook ingredient: "
-                         f"`{payload.get('generic_names')}` · confidence: `{payload.get('confidence')}`")
+                stage_line("1", "Scope gate",
+                           f"medicine {payload.get('medicine_mentions')} · handbook ingredient "
+                           f"{payload.get('generic_names')} · confidence {payload.get('confidence')}")
             elif stage == "guard":
-                st.write(f"**Wave 1 · Input guard** → `{payload.get('action')}` — {payload.get('reason')}")
+                stage_line("1", "Input guard",
+                           f"{payload.get('action')} — {payload.get('reason')}")
             elif stage == "tool_call":
                 args = payload["arguments"]
-                label = args.get("search_query") or args.get("report_request", "")
+                label = str(args.get("search_query") or args.get("report_request") or "")[:120]
                 focus = args.get("focus")
-                focus_txt = "" if focus in (None, "", "all") else f" focus=`{focus}`"
-                st.write(f"**Wave 1 · [{payload['index']}/{payload['max']}] {payload['tool']}** → {str(label)[:120]}"
-                         f"{focus_txt} · `{payload['result_summary']}`")
+                focus_txt = f" · focus {focus}" if focus not in (None, "", "all") else ""
+                stage_line("1", f"[{payload['index']}/{payload['max']}] {payload['tool']}",
+                           f"{label}{focus_txt} · {payload['result_summary']}")
             elif stage == "report_start":
-                st.write(f"**Wave 1 · Drafting report** → Generating sections in parallel from `{payload.get('evidence_count')}` evidence chunks...")
+                stage_line("1", "Drafting report",
+                           f"{payload.get('evidence_count')} evidence chunks · sections run in parallel")
             elif stage == "report_section":
-                st.write(f"**Wave 1 · Section complete** → `{payload.get('title')}`")
+                stage_line("1", f"Section {payload.get('number')} complete", payload.get("title"))
             elif stage == "verify":
                 if payload.get("stage") == "start":
-                    st.write("**Wave 2 · Verification** → Checking citations, PDF page numbers, and process claims...")
-                elif payload.get("stage") == "done":
-                    st.write(f"**Wave 2 · Verification complete** → Verdict: `{payload.get('verdict')}`")
+                    stage_line("2", "Verification", "citations, PDF pages, process claims, LLM claim review")
+                else:
+                    stage_line("2", "Verification complete", f"verdict {payload.get('verdict')}")
             elif stage == "deepeval":
                 if payload.get("stage") == "start":
-                    st.write("**Wave 2 · DeepEval** → Scoring faithfulness and retrieval relevancy...")
-                elif payload.get("stage") == "done":
-                    mark = "meets targets" if payload.get("ok") else "below targets — see the report notes"
-                    st.write(f"**Wave 2 · DeepEval complete** → {mark}" + (f" — {payload.get('note')}" if payload.get("note") else ""))
+                    stage_line("2", "DeepEval", "scoring faithfulness and retrieval relevancy")
+                else:
+                    mark = "meets targets" if payload.get("ok") else "below targets"
+                    note = f" — {payload.get('note')}" if payload.get("note") else ""
+                    stage_line("2", "DeepEval complete", f"{mark}{note}")
 
         run_result: dict = {}
         run_error: list = []
