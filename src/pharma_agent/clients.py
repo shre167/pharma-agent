@@ -99,8 +99,8 @@ class Services:
         return self.llm_chat([{"role": "user", "content": "Reply with exactly: CAPGEMINI_CHAT_OK"}])
 
     def test_embeddings(self) -> int:
-        resp = self.client.embeddings.create(model=self.settings.embedding_model,
-                                             input=["CAPGEMINI_TITAN_EMBEDDING_TEST"])
+        resp = self.embedding_client.embeddings.create(model=self.settings.embedding_model,
+                                                       input=["EMBEDDING_API_TEST"])
         return len(resp.data[0].embedding)
 
     def test_tool_calling(self) -> bool:
