@@ -9,7 +9,6 @@ import streamlit as st
 
 from ..config import load_settings
 from ..observability import langsmith_enabled
-from ..retrieval.index import IndexOutOfDate
 from ..runtime import Runtime, build_runtime
 from ..wave2.storage import PENDING_STATUSES, load_report, submit_review
 
@@ -100,7 +99,7 @@ def get_runtime() -> Runtime:
     ls_key = st.session_state.get("ls_key") or settings.langsmith_api_key
     try:
         runtime = _cached_runtime(api_key, ls_key)
-    except (FileNotFoundError, IndexOutOfDate) as exc:
+    except FileNotFoundError as exc:
         st.error(f"The knowledge base is not ready: {exc}")
         st.markdown("Build the knowledge base using your configured API key:")
         if st.button("Build Knowledge Base Now", type="primary"):
@@ -128,7 +127,10 @@ def get_runtime() -> Runtime:
         from pharma_agent import __version__
         st.caption(f"Build v{__version__}")
         st.caption(f"LLM: `{runtime.settings.llm_model}`")
-        st.caption(f"Embeddings: `{runtime.settings.embedding_model}`")
+        if runtime.kb.vectorstore is None:
+            st.warning(f"Retrieval is BM25 keyword-only (FAISS index unavailable: {runtime.kb.index_error})")
+        else:
+            st.caption(f"Embeddings: `{runtime.settings.embedding_model}`")
         st.caption(f"Formulations indexed: **{len({c['metadata']['formulation_id'] for c in runtime.kb.chunks})}** "
                    f"· chunks: **{len(runtime.kb.chunks)}**")
         st.caption("LangSmith tracing: " + ("**ON**" if langsmith_enabled() else "off"))

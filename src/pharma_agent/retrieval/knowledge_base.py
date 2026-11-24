@@ -12,7 +12,7 @@ from rank_bm25 import BM25Okapi
 
 from ..config import Settings
 from ..ingestion.terms import ingredient_phrase
-from .index import load_index
+from .index import IndexOutOfDate, load_index
 
 
 def tokenize(text: str) -> list[str]:
@@ -34,11 +34,21 @@ class KnowledgeBase:
         self.chunk_by_id = {c["id"]: c for c in chunks}
         self._bm25 = BM25Okapi([tokenize(c["text"]) for c in chunks])
         self.vocab = self._build_vocab()
+        self.index_error: Optional[str] = None
 
     @classmethod
     def load(cls, settings: Settings, embeddings) -> "KnowledgeBase":
         chunks = load_chunks(settings.chunks_path)
-        return cls(chunks, load_index(settings, chunks, embeddings))
+        try:
+            vectorstore = load_index(settings, chunks, embeddings)
+            index_error = None
+        except IndexOutOfDate as exc:
+            # Dense retrieval is unavailable (missing/stale index or unreachable embedding
+            # provider); BM25 over the cached chunks still works, so degrade instead of dying.
+            vectorstore, index_error = None, str(exc)
+        kb = cls(chunks, vectorstore)
+        kb.index_error = index_error
+        return kb
 
     # ---- vocabulary: built from handbook headings, no manual dictionary -------
     def _build_vocab(self) -> dict[str, set[str]]:
@@ -59,11 +69,13 @@ class KnowledgeBase:
     # ---- retrieval -----------------------------------------------------------
     def retrieve(self, query: str, top_k: int = 12, formulation_hint: Optional[str] = None,
                  chunk_types: Optional[list[str]] = None) -> list[dict]:
-        """Hybrid retrieval. Fuses ranks (not raw scores) so FAISS and BM25 stay comparable."""
+        """Hybrid retrieval (FAISS + BM25 fused by RRF), or BM25-only when no vector store is loaded."""
         candidate_k = min(max(top_k * 3, top_k), len(self.chunks))
-        dense_docs = self.vectorstore.similarity_search(query, k=candidate_k)
-        dense_ids = [d.metadata.get("chunk_id") for d in dense_docs
-                     if d.metadata.get("chunk_id") in self.chunk_by_id]
+        dense_ids: list[str] = []
+        if self.vectorstore is not None:
+            dense_docs = self.vectorstore.similarity_search(query, k=candidate_k)
+            dense_ids = [d.metadata.get("chunk_id") for d in dense_docs
+                         if d.metadata.get("chunk_id") in self.chunk_by_id]
 
         scores = self._bm25.get_scores(tokenize(query))
         order = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:candidate_k]
