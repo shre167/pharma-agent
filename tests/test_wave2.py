@@ -116,3 +116,12 @@ def test_compare_evaluations_marks_the_case_set(settings):
     frame = compare_evaluations(settings)
     assert frame.loc["e1", "case_set"] == case_set_hash([{"id": "P01"}])
     assert frame.loc["e1", "outcome_accuracy"] == 1
+
+
+def test_measure_report_quality_degrades_on_judge_failure():
+    from pharma_agent.wave2.evaluation import measure_report_quality
+
+    empty = measure_report_quality(lambda m: json.dumps({}), "q", "", ["ctx"])
+    assert empty["ok"] is False and empty["faithfulness"] is None
+    bad = measure_report_quality(lambda m: "garbage from the judge", "q", "report text", ["ctx"])
+    assert bad["ok"] is False and bad["faithfulness"] is None and "DeepEval failed" in bad["note"]

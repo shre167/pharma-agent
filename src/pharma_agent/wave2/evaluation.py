@@ -211,6 +211,37 @@ def summarize(frame: pd.DataFrame) -> pd.Series:
     return ok[cols].apply(pd.to_numeric, errors="coerce").mean(numeric_only=True)
 
 
+def measure_report_quality(llm_chat: Callable, query: str, report: str,
+                           evidence_texts: list[str]) -> dict:
+    """Per-run DeepEval summary (faithfulness + retrieval relevancy) for the review step.
+
+    Degrades gracefully: any judge failure is recorded, never raised into the run.
+    """
+    from deepeval.metrics import ContextualRelevancyMetric, FaithfulnessMetric
+    from deepeval.test_case import LLMTestCase
+
+    if not report or not evidence_texts:
+        return {"faithfulness": None, "retrieval_relevancy": None, "ok": False,
+                "note": "No report text or retrieved context to evaluate."}
+    try:
+        judge = _make_judge(llm_chat)
+        test_case = LLMTestCase(input=query, actual_output=report,
+                                retrieval_context=list(evidence_texts))
+        fm = FaithfulnessMetric(threshold=EVAL_TARGETS["faithfulness"], model=judge, async_mode=False)
+        fm.measure(test_case)
+        rm = ContextualRelevancyMetric(threshold=EVAL_TARGETS["retrieval_relevancy"], model=judge, async_mode=False)
+        rm.measure(test_case)
+        faithfulness = round(float(fm.score), 3)
+        relevancy = round(float(rm.score), 3)
+        return {"faithfulness": faithfulness, "target_faithfulness": EVAL_TARGETS["faithfulness"],
+                "retrieval_relevancy": relevancy, "target_retrieval_relevancy": EVAL_TARGETS["retrieval_relevancy"],
+                "ok": faithfulness >= EVAL_TARGETS["faithfulness"]
+                      and relevancy >= EVAL_TARGETS["retrieval_relevancy"], "note": ""}
+    except Exception as exc:  # noqa: BLE001
+        return {"faithfulness": None, "retrieval_relevancy": None, "ok": False,
+                "note": f"DeepEval failed: {type(exc).__name__}: {exc}"}
+
+
 def compare_evaluations(settings) -> pd.DataFrame:
     """Before/after comparison. A 'case_set' column marks which case set each run used;
     metrics across runs with different case_set values are not comparable."""

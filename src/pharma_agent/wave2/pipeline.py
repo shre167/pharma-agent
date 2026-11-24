@@ -66,12 +66,20 @@ def _generate(runtime, query: str, run_id: str, origin: str, on_event: EventFn) 
         return early(status, scope=scope, answer=agent_result.get("answer", ""),
                      wave1_status=agent_result.get("status"), tool_calls=agent_result.get("tool_calls", []))
 
-    # 4. Verification of the exact draft.
+    # 4. Verification of the exact draft (deterministic checks + LLM claim review + DeepEval).
     report_text, selected = capture["text"], capture["selected"]
     emit("verify", {"stage": "start"})
     verdict, checks, ai_review = verify_report(runtime.services.llm_chat, report_text, selected)
     emit("verify", {"stage": "done", "verdict": verdict})
     status = "REPORT_GENERATED_PENDING_REVIEW" if verdict == "PASS" else "REPORT_GENERATED_NEEDS_REVIEW"
+
+    emit("deepeval", {"stage": "start"})
+    from .evaluation import measure_report_quality   # deferred: evaluation imports this module
+
+    deepeval = measure_report_quality(
+        runtime.services.llm_chat, query, report_text,
+        [e.get("text", "") for e in selected])
+    emit("deepeval", {"stage": "done", "ok": deepeval["ok"], "note": deepeval["note"]})
 
     # 5. Persist report + evidence manifest.
     report_id = run_id
@@ -92,7 +100,7 @@ def _generate(runtime, query: str, run_id: str, origin: str, on_event: EventFn) 
         "report_id": report_id, "run_id": run_id, "origin": origin, "query": query,
         "status": status, "finalised": False, "output_verdict": verdict,
         "mandatory_checks_pass": all(c["passed"] for c in checks),
-        "checks": checks, "llm_review": ai_review,
+        "checks": checks, "llm_review": ai_review, "deepeval": deepeval,
         "review_decision": {"review_type": "pending", "decision": "pending"},
         "scope": scope, "tool_calls": agent_result.get("tool_calls", []),
         "trace_run_id": trace_id, "trace_url": None, "latency_s": latency,
@@ -105,7 +113,7 @@ def _generate(runtime, query: str, run_id: str, origin: str, on_event: EventFn) 
     result = {
         **base, "report_id": report_id, "status": status, "output_verdict": verdict,
         "report_path": str(folder / "report.md"), "manifest_path": str(folder / "manifest.json"),
-        "report": report_text, "checks": checks, "llm_review": ai_review,
+        "report": report_text, "checks": checks, "llm_review": ai_review, "deepeval": deepeval,
         "evidence_count": len(selected), "tool_calls": agent_result.get("tool_calls", []),
         "answer": agent_result.get("answer", ""), "latency_s": latency,
         "evidence": [{"formulation_name": e.get("metadata", {}).get("formulation_name"),

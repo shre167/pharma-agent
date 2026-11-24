@@ -50,6 +50,14 @@ if st.button("Generate report", type="primary", disabled=not query.strip()):
                          f"· `{payload['result_summary']}`")
             elif stage == "report_start":
                 st.write(f"**Drafting report** → Synthesizing technical report from `{payload.get('evidence_count')}` evidence chunks...")
+            elif stage == "report_section":
+                st.write(f"**Generating section** → `{payload.get('title')}`")
+            elif stage == "deepeval":
+                if payload.get("stage") == "start":
+                    st.write("**DeepEval** → Scoring faithfulness and retrieval relevancy...")
+                elif payload.get("stage") == "done":
+                    mark = "✅ meets targets" if payload.get("ok") else "⚠️ see report notes"
+                    st.write(f"**DeepEval complete** → {mark}" + (f" — {payload.get('note')}" if payload.get("note") else ""))
             elif stage == "verify":
                 if payload.get("stage") == "start":
                     st.write("**Verification** → Checking citations, PDF page numbers, and process claims...")

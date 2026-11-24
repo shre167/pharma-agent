@@ -110,6 +110,22 @@ def render_checks(checks: list[dict], llm_review: dict) -> None:
             st.markdown(f"- **{issue.get('claim', '')}** — {issue.get('reason', '')}")
 
 
+def render_deepeval(deepeval: dict | None) -> None:
+    """Per-run DeepEval scores (faithfulness / retrieval relevancy) with targets."""
+    if not deepeval:
+        return
+    st.markdown("**DeepEval quality scores**")
+    if deepeval.get("faithfulness") is None:
+        st.caption(deepeval.get("note") or "DeepEval scores were not produced for this run.")
+        return
+    f_mark = "✅" if deepeval["faithfulness"] >= deepeval["target_faithfulness"] else "⚠️"
+    r_mark = "✅" if deepeval["retrieval_relevancy"] >= deepeval["target_retrieval_relevancy"] else "⚠️"
+    st.markdown(
+        f"- {f_mark} **Faithfulness:** {deepeval['faithfulness']:.3f} (target ≥ {deepeval['target_faithfulness']})\n"
+        f"- {r_mark} **Retrieval relevancy:** {deepeval['retrieval_relevancy']:.3f} "
+        f"(target ≥ {deepeval['target_retrieval_relevancy']})")
+
+
 def render_tool_trace(tool_calls: list[dict]) -> None:
     if not tool_calls:
         st.caption("No tools were called.")
@@ -141,6 +157,7 @@ def render_report_detail(settings, report_id: str, key: str) -> None:
                            mime="text/markdown", key=f"{key}_dl")
     with tabs[1]:
         render_checks(manifest["checks"], manifest.get("llm_review", {}))
+        render_deepeval(manifest.get("deepeval"))
     with tabs[2]:
         for e in manifest["evidence"]:
             with st.expander(f"[{e['tag']}] {e['formulation_name']} · {e['chunk_type']} · p.{e['page']}"):
@@ -181,6 +198,14 @@ def _review_panel(settings, manifest: dict, key: str) -> None:
         f"**LLM review issues:** {len(issues)} · **Evidence chunks:** {evidence_count}\n"
         f"- **Query:** {manifest.get('query', '')[:200]}\n"
         f"- **Status:** `{manifest['status']}` — only approve + all checks + verdict PASS finalises this report.")
+    deepeval = manifest.get("deepeval") or {}
+    if deepeval.get("faithfulness") is not None:
+        f_mark = "✅" if deepeval["faithfulness"] >= deepeval["target_faithfulness"] else "⚠️"
+        r_mark = "✅" if deepeval["retrieval_relevancy"] >= deepeval["target_retrieval_relevancy"] else "⚠️"
+        st.markdown(f"- **DeepEval:** {f_mark} faithfulness {deepeval['faithfulness']:.3f} · "
+                    f"{r_mark} relevancy {deepeval['retrieval_relevancy']:.3f}")
+    elif deepeval.get("note"):
+        st.markdown(f"- **DeepEval:** ⚠️ {deepeval['note']}")
     if issues:
         with st.expander(f"Flagged claims ({len(issues)})"):
             render_checks([], review)
