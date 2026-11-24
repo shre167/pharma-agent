@@ -20,6 +20,23 @@ def test_brand_name_resolves_to_handbook_generic():
     assert scope["generic_names"] == ["acetaminophen"] and scope["is_medicine_request"]
 
 
+def test_alias_resolves_to_handbook_spelling_in_both_directions():
+    PARACETAMOL_VOCAB = {"paracetamol": {"PARACETAMOL TABLETS"}, "ibuprofen": {"IBUPROFEN TABLETS"}}
+    llm = fake_llm({"medicine_mentions": ["Dolo"], "active_ingredients_identified": ["acetaminophen"],
+                    "matched_handbook_ingredients": [], "identification_method": "explicit_name",
+                    "confidence": "high"})
+    scope = check_scope(PARACETAMOL_VOCAB, llm, "report for dolo 650")
+    assert scope["generic_names"] == ["paracetamol"] and scope["is_medicine_request"]
+
+
+def test_generic_term_in_request_maps_to_handbook_chemical():
+    llm = fake_llm({"medicine_mentions": ["paracetamol"],
+                    "matched_handbook_ingredients": ["paracetamol"], "identification_method": "explicit_name",
+                    "confidence": "high"})
+    scope = check_scope(VOCAB, llm, "design report for paracetamol 500 mg immediate-release tablets")
+    assert scope["generic_names"] == ["acetaminophen"] and scope["is_medicine_request"]
+
+
 def test_invented_ingredient_never_opens_the_gate():
     llm = fake_llm({"medicine_mentions": ["Zorbex"], "matched_handbook_ingredients": ["zorbexinol"],
                     "identification_method": "explicit_name", "confidence": "high"})

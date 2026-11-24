@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from collections import defaultdict
 from typing import Callable
 
 from ..utils import parse_json
@@ -26,6 +27,11 @@ SYNONYM_MAP = {
     "motrin": "ibuprofen",
     "nurofen": "ibuprofen",
 }
+
+_EQUIVALENCE: dict[str, set[str]] = defaultdict(set)
+for _alias, _canonical in SYNONYM_MAP.items():
+    _EQUIVALENCE[_alias].add(_canonical)
+    _EQUIVALENCE[_canonical].add(_alias)
 
 LLMChat = Callable[[list[dict]], str]
 
@@ -61,8 +67,11 @@ def check_scope(vocab: dict, llm_chat: LLMChat, query: str) -> dict:
             cleaned = str(x).strip().casefold()
             if cleaned in vocab:
                 out.add(cleaned)
-            elif cleaned in SYNONYM_MAP and SYNONYM_MAP[cleaned] in vocab:
-                out.add(SYNONYM_MAP[cleaned])
+                continue
+            for alt in _EQUIVALENCE.get(cleaned, ()):
+                if alt in vocab:
+                    out.add(alt)
+                    break
         return sorted(out)
 
     matched = exact(scope.get("matched_handbook_ingredients"))
