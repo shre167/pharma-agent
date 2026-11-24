@@ -49,7 +49,12 @@ def _chat_call(client: OpenAI, model: str, messages: list[dict], response_format
     if response_format:
         kwargs["response_format"] = response_format
     response = client.chat.completions.create(**kwargs)
-    content = response.choices[0].message.content
+    choices = getattr(response, "choices", None)
+    if choices is None:
+        raise RuntimeError(
+            f"The LLM gateway returned an unexpected response: {str(response)[:200]!r}. "
+            "LLM_BASE_URL and LLM_MODEL must point to an OpenAI-compatible chat endpoint.")
+    content = choices[0].message.content
     if not content:
         raise RuntimeError("The LLM returned an empty response.")
     return content.strip()
@@ -64,11 +69,15 @@ class Services:
         self.settings = settings
         self.client = OpenAI(api_key=settings.ge_api_key, base_url=settings.llm_base_url,
                              timeout=180.0, max_retries=1)
+        self.embedding_client = OpenAI(
+            api_key=settings.embedding_api_key or settings.ge_api_key,
+            base_url=settings.embedding_base_url or settings.llm_base_url,
+            timeout=180.0, max_retries=1)
         self.chat_model = ChatOpenAI(
             model=settings.llm_model, api_key=settings.ge_api_key, base_url=settings.llm_base_url,
             temperature=settings.llm_temperature, timeout=180, max_retries=1, stream_usage=False,
         )
-        self.embeddings = CapgeminiTitanEmbeddings(self.client, settings.embedding_model,
+        self.embeddings = CapgeminiTitanEmbeddings(self.embedding_client, settings.embedding_model,
                                                    show_progress=show_embedding_progress)
 
     def llm_chat(self, messages: list[dict], response_format: Any = None) -> str:

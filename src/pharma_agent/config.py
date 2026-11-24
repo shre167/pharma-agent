@@ -21,6 +21,8 @@ class Settings:
     ge_api_key: str
     llm_base_url: str
     llm_model: str
+    embedding_api_key: str
+    embedding_base_url: str
     embedding_model: str
     llm_temperature: float
     max_iterations: int
@@ -102,10 +104,14 @@ class Settings:
 def load_settings(project_root: Path | None = None) -> Settings:
     root = Path(project_root) if project_root else PROJECT_ROOT
     load_dotenv(root / ".env", override=False)
+    ge_api_key = os.getenv("GE_API_KEY", "").strip()
+    llm_base_url = os.getenv("LLM_BASE_URL", "https://openai.generative.engine.capgemini.com/v1").strip()
     settings = Settings(
-        ge_api_key=os.getenv("GE_API_KEY", "").strip(),
-        llm_base_url=os.getenv("LLM_BASE_URL", "https://openai.generative.engine.capgemini.com/v1").strip(),
+        ge_api_key=ge_api_key,
+        llm_base_url=llm_base_url,
         llm_model=os.getenv("LLM_MODEL", "openai.gpt-5-mini").strip(),
+        embedding_api_key=os.getenv("EMBEDDING_API_KEY", ge_api_key).strip(),
+        embedding_base_url=os.getenv("EMBEDDING_BASE_URL", llm_base_url).strip(),
         embedding_model=os.getenv("EMBEDDING_MODEL", "amazon.titan-embed-text-v2:0").strip(),
         llm_temperature=float(os.getenv("LLM_TEMPERATURE", "0.1")),
         max_iterations=int(os.getenv("AGENT_MAX_ITERATIONS", "8")),
