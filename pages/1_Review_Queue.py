@@ -10,11 +10,11 @@ import streamlit as st  # noqa: E402
 from pharma_agent.ui.components import get_runtime, render_report_detail, setup_page  # noqa: E402
 from pharma_agent.wave2.storage import list_reports  # noqa: E402
 
-setup_page("Review queue", "📝")
+setup_page("Review queue")
 runtime = get_runtime()
 settings = runtime.settings
 
-st.title("📝 Review queue")
+st.title("Review queue")
 pending = list_reports(settings, pending_only=True)
 history = [m for m in list_reports(settings) if m["status"] not in {"REPORT_GENERATED_PENDING_REVIEW",
                                                                     "REPORT_GENERATED_NEEDS_REVIEW"}]

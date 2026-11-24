@@ -29,6 +29,9 @@ def recording_llm(calls: list, reply: str):
     return llm_chat
 
 
+import threading  # noqa: E402
+
+
 def test_sections_use_separate_calls_with_routed_evidence(tmp_path):
     calls: list = []
     progress: list = []
@@ -62,6 +65,20 @@ def test_evidence_tags_keep_global_numbering(tmp_path):
     process_msgs = [user for _, user in calls if "section 3. Manufacturing process" in user]
     assert "[E1] ACETAMINOPHEN TABLETS | BOM" not in process_msgs[0], \
         "process section must not reuse tag [E1] for a different chunk"
+
+
+def test_content_sections_run_concurrently(tmp_path):
+    barrier = threading.Barrier(5, timeout=10)
+
+    def llm(messages):
+        if "SECTION COVERAGE" in messages[1]["content"]:
+            return "The gaps section."
+        barrier.wait()
+        return "Body content."
+
+    report, _ = generate_report(llm, "design report", SELECTED, CLASSIFICATION, tmp_path / "out.md")
+    assert "could not be generated" not in report, "the five section calls must overlap to pass the barrier"
+    assert "## 1. Product & formulation identity" in report
 
 
 def test_section_failure_keeps_the_report(tmp_path):

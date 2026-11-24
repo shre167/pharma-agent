@@ -18,9 +18,10 @@ from pharma_agent.wave2.pipeline import run_generation  # noqa: E402
 setup_page("Generate report")
 runtime = get_runtime()
 
-st.title("💊 Pharma Manufacturing Design Report Agent")
-st.caption("Evidence-backed drafts from the handbook. Medicine + variant is identified first; no match means decline, "
-           "missing data becomes a stated gap. Every draft needs human review - this is not validated manufacturing software.")
+st.title("Pharma Manufacturing Design Report Agent")
+st.caption("Wave 1 (agent, RAG, citations):  scope gate → input guard → retrieval agent → sectioned report  ·  "
+           "Wave 2 (verification, evaluation, safety): verification → DeepEval → human review.  "
+           "Evidence-backed drafts from the handbook; every draft needs human review.")
 
 st.session_state.setdefault("query_text", "")
 
@@ -39,30 +40,30 @@ if st.button("Generate report", type="primary", disabled=not query.strip()):
 
         def render_event(stage: str, payload: dict) -> None:
             if stage == "scope":
-                st.write(f"**Scope gate** → medicine: `{payload.get('medicine_mentions')}` · handbook ingredient: "
+                st.write(f"**Wave 1 · Scope gate** → medicine: `{payload.get('medicine_mentions')}` · handbook ingredient: "
                          f"`{payload.get('generic_names')}` · confidence: `{payload.get('confidence')}`")
             elif stage == "guard":
-                st.write(f"**Input guard** → `{payload.get('action')}` — {payload.get('reason')}")
+                st.write(f"**Wave 1 · Input guard** → `{payload.get('action')}` — {payload.get('reason')}")
             elif stage == "tool_call":
                 args = payload["arguments"]
                 label = args.get("search_query") or args.get("report_request", "")
-                st.write(f"**[{payload['index']}/{payload['max']}] {payload['tool']}** → {str(label)[:120]} "
+                st.write(f"**Wave 1 · [{payload['index']}/{payload['max']}] {payload['tool']}** → {str(label)[:120]} "
                          f"· `{payload['result_summary']}`")
             elif stage == "report_start":
-                st.write(f"**Drafting report** → Synthesizing technical report from `{payload.get('evidence_count')}` evidence chunks...")
+                st.write(f"**Wave 1 · Drafting report** → Generating sections in parallel from `{payload.get('evidence_count')}` evidence chunks...")
             elif stage == "report_section":
-                st.write(f"**Generating section** → `{payload.get('title')}`")
-            elif stage == "deepeval":
-                if payload.get("stage") == "start":
-                    st.write("**DeepEval** → Scoring faithfulness and retrieval relevancy...")
-                elif payload.get("stage") == "done":
-                    mark = "✅ meets targets" if payload.get("ok") else "⚠️ see report notes"
-                    st.write(f"**DeepEval complete** → {mark}" + (f" — {payload.get('note')}" if payload.get("note") else ""))
+                st.write(f"**Wave 1 · Section complete** → `{payload.get('title')}`")
             elif stage == "verify":
                 if payload.get("stage") == "start":
-                    st.write("**Verification** → Checking citations, PDF page numbers, and process claims...")
+                    st.write("**Wave 2 · Verification** → Checking citations, PDF page numbers, and process claims...")
                 elif payload.get("stage") == "done":
-                    st.write(f"**Verification complete** → Verdict: `{payload.get('verdict')}`")
+                    st.write(f"**Wave 2 · Verification complete** → Verdict: `{payload.get('verdict')}`")
+            elif stage == "deepeval":
+                if payload.get("stage") == "start":
+                    st.write("**Wave 2 · DeepEval** → Scoring faithfulness and retrieval relevancy...")
+                elif payload.get("stage") == "done":
+                    mark = "meets targets" if payload.get("ok") else "below targets — see the report notes"
+                    st.write(f"**Wave 2 · DeepEval complete** → {mark}" + (f" — {payload.get('note')}" if payload.get("note") else ""))
 
         run_result: dict = {}
         run_error: list = []

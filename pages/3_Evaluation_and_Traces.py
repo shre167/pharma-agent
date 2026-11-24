@@ -13,11 +13,11 @@ from pharma_agent.wave2.evaluation import (  # noqa: E402
 from pharma_agent.wave2.storage import latest_runs  # noqa: E402
 from pharma_agent.wave2.summary import write_wave2_summary  # noqa: E402
 
-setup_page("Evaluation & traces", "📊")
+setup_page("Evaluation & traces")
 runtime = get_runtime()
 settings = runtime.settings
 
-st.title("📊 Evaluation & traces")
+st.title("Evaluation & traces")
 tab_run, tab_results, tab_runs, tab_summary = st.tabs(
     ["Run evaluation", "Results", "Run log & traces", "Wave 2 summary"])
 

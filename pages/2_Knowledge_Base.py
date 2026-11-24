@@ -8,11 +8,11 @@ import streamlit as st  # noqa: E402
 
 from pharma_agent.ui.components import get_runtime, setup_page  # noqa: E402
 
-setup_page("Knowledge base", "📚")
+setup_page("Knowledge base")
 runtime = get_runtime()
 kb = runtime.kb
 
-st.title("📚 Knowledge base")
+st.title("Knowledge base")
 manifest = kb.manifest_frame()
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Formulations", len(manifest))

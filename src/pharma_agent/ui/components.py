@@ -19,7 +19,7 @@ STATUS_COLOURS = {
 }
 
 
-def setup_page(title: str, icon: str = "💊") -> None:
+def setup_page(title: str, icon: str | None = None) -> None:
     st.set_page_config(page_title=f"{title} · Pharma Design Agent", page_icon=icon, layout="wide")
 
 
@@ -70,7 +70,7 @@ def get_runtime() -> Runtime:
     except (FileNotFoundError, IndexOutOfDate) as exc:
         st.error(f"The knowledge base is not ready: {exc}")
         st.markdown("Build the knowledge base using your configured API key:")
-        if st.button("🔨 Build Knowledge Base Now", type="primary"):
+        if st.button("Build Knowledge Base Now", type="primary"):
             with st.status("Building knowledge base (embedding chunks)...", expanded=True) as status:
                 from pharma_agent.clients import Services
                 from pharma_agent.ingestion.pipeline import run_ingestion
@@ -102,12 +102,17 @@ def get_runtime() -> Runtime:
 
 def render_checks(checks: list[dict], llm_review: dict) -> None:
     for c in checks:
-        st.markdown(f"{'✅' if c['passed'] else '⚠️'} **{c['name']}** — {c['detail']}")
+        mark = ":green[PASS]" if c["passed"] else ":orange[CHECK]"
+        st.markdown(f"{mark} **{c['name']}** — {c['detail']}")
     issues = (llm_review or {}).get("issues") or []
     if issues:
         st.markdown("**LLM-flagged issues**")
         for issue in issues[:15]:
             st.markdown(f"- **{issue.get('claim', '')}** — {issue.get('reason', '')}")
+
+
+def _deepeval_mark(value: float, target: float) -> str:
+    return ":green[meets target]" if value >= target else ":orange[below target]"
 
 
 def render_deepeval(deepeval: dict | None) -> None:
@@ -118,12 +123,12 @@ def render_deepeval(deepeval: dict | None) -> None:
     if deepeval.get("faithfulness") is None:
         st.caption(deepeval.get("note") or "DeepEval scores were not produced for this run.")
         return
-    f_mark = "✅" if deepeval["faithfulness"] >= deepeval["target_faithfulness"] else "⚠️"
-    r_mark = "✅" if deepeval["retrieval_relevancy"] >= deepeval["target_retrieval_relevancy"] else "⚠️"
+    f_mark = _deepeval_mark(deepeval["faithfulness"], deepeval["target_faithfulness"])
+    r_mark = _deepeval_mark(deepeval["retrieval_relevancy"], deepeval["target_retrieval_relevancy"])
     st.markdown(
-        f"- {f_mark} **Faithfulness:** {deepeval['faithfulness']:.3f} (target ≥ {deepeval['target_faithfulness']})\n"
-        f"- {r_mark} **Retrieval relevancy:** {deepeval['retrieval_relevancy']:.3f} "
-        f"(target ≥ {deepeval['target_retrieval_relevancy']})")
+        f"- **Faithfulness:** {deepeval['faithfulness']:.3f} (target ≥ {deepeval['target_faithfulness']}) — {f_mark}\n"
+        f"- **Retrieval relevancy:** {deepeval['retrieval_relevancy']:.3f} "
+        f"(target ≥ {deepeval['target_retrieval_relevancy']}) — {r_mark}")
 
 
 def render_tool_trace(tool_calls: list[dict]) -> None:
@@ -149,8 +154,10 @@ def render_report_detail(settings, report_id: str, key: str) -> None:
     c3.caption(f"ID `{report_id[:8]}`")
     if manifest.get("trace_url"):
         st.markdown(f"[Open LangSmith trace]({manifest['trace_url']})")
+    st.caption("Pipeline · Wave 1: scope gate → input guard → retrieval agent → sectioned report"
+               "  |  Wave 2: verification → DeepEval → human review")
 
-    tabs = st.tabs(["Report", "Verification", "Evidence", "Tool trace", "Review"])
+    tabs = st.tabs(["Report", "Verification · Wave 2", "Evidence · Wave 1", "Tool trace · Wave 1", "Review · Wave 2"])
     with tabs[0]:
         st.markdown(report_text)
         st.download_button("Download report.md", report_text, file_name=f"report_{report_id[:8]}.md",
@@ -200,12 +207,12 @@ def _review_panel(settings, manifest: dict, key: str) -> None:
         f"- **Status:** `{manifest['status']}` — only approve + all checks + verdict PASS finalises this report.")
     deepeval = manifest.get("deepeval") or {}
     if deepeval.get("faithfulness") is not None:
-        f_mark = "✅" if deepeval["faithfulness"] >= deepeval["target_faithfulness"] else "⚠️"
-        r_mark = "✅" if deepeval["retrieval_relevancy"] >= deepeval["target_retrieval_relevancy"] else "⚠️"
-        st.markdown(f"- **DeepEval:** {f_mark} faithfulness {deepeval['faithfulness']:.3f} · "
-                    f"{r_mark} relevancy {deepeval['retrieval_relevancy']:.3f}")
+        f_mark = _deepeval_mark(deepeval["faithfulness"], deepeval["target_faithfulness"])
+        r_mark = _deepeval_mark(deepeval["retrieval_relevancy"], deepeval["target_retrieval_relevancy"])
+        st.markdown(f"- **DeepEval:** faithfulness {deepeval['faithfulness']:.3f} ({f_mark}) · "
+                    f"relevancy {deepeval['retrieval_relevancy']:.3f} ({r_mark})")
     elif deepeval.get("note"):
-        st.markdown(f"- **DeepEval:** ⚠️ {deepeval['note']}")
+        st.markdown(f"- **DeepEval:** {deepeval['note']}")
     if issues:
         with st.expander(f"Flagged claims ({len(issues)})"):
             render_checks([], review)
@@ -230,8 +237,8 @@ def _review_panel(settings, manifest: dict, key: str) -> None:
         reviewer = st.text_input("Reviewer name")
         comment = st.text_area("Comment (optional)")
         a, r = st.columns(2)
-        approve = a.form_submit_button("✅ Approve", use_container_width=True, type="primary")
-        reject = r.form_submit_button("❌ Reject", use_container_width=True)
+        approve = a.form_submit_button("Approve", use_container_width=True, type="primary")
+        reject = r.form_submit_button("Reject", use_container_width=True)
     if approve or reject:
         if not reviewer.strip():
             st.error("Please enter your name so the decision is attributable.")
