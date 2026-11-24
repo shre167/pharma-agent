@@ -20,18 +20,25 @@ def test_brand_name_resolves_to_handbook_generic():
     assert scope["generic_names"] == ["acetaminophen"] and scope["is_medicine_request"]
 
 
-def test_alias_resolves_to_handbook_spelling_in_both_directions():
+def test_brand_mapped_by_llm_uses_handbook_spelling_and_fails_closed_otherwise():
     PARACETAMOL_VOCAB = {"paracetamol": {"PARACETAMOL TABLETS"}, "ibuprofen": {"IBUPROFEN TABLETS"}}
-    llm = fake_llm({"medicine_mentions": ["Dolo"], "active_ingredients_identified": ["acetaminophen"],
-                    "matched_handbook_ingredients": [], "identification_method": "explicit_name",
-                    "confidence": "high"})
-    scope = check_scope(PARACETAMOL_VOCAB, llm, "report for dolo 650")
+    copies_handbook = fake_llm({"medicine_mentions": ["Dolo"],
+                                "matched_handbook_ingredients": ["paracetamol"],
+                                "active_ingredients_identified": ["paracetamol"],
+                                "identification_method": "explicit_name", "confidence": "high"})
+    scope = check_scope(PARACETAMOL_VOCAB, copies_handbook, "report for dolo 650")
     assert scope["generic_names"] == ["paracetamol"] and scope["is_medicine_request"]
 
+    echoes_wrong_spelling = fake_llm({"medicine_mentions": ["Dolo"],
+                                      "matched_handbook_ingredients": ["acetaminophen"],
+                                      "identification_method": "explicit_name", "confidence": "high"})
+    scope = check_scope(PARACETAMOL_VOCAB, echoes_wrong_spelling, "report for dolo 650")
+    assert scope["generic_names"] == [] and not scope["is_medicine_request"]
 
-def test_generic_term_in_request_maps_to_handbook_chemical():
+
+def test_generic_term_mapped_by_llm_to_handbook_chemical():
     llm = fake_llm({"medicine_mentions": ["paracetamol"],
-                    "matched_handbook_ingredients": ["paracetamol"], "identification_method": "explicit_name",
+                    "matched_handbook_ingredients": ["acetaminophen"], "identification_method": "explicit_name",
                     "confidence": "high"})
     scope = check_scope(VOCAB, llm, "design report for paracetamol 500 mg immediate-release tablets")
     assert scope["generic_names"] == ["acetaminophen"] and scope["is_medicine_request"]

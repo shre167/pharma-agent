@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import re
-from collections import defaultdict
 from typing import Callable
 
 from ..utils import parse_json
@@ -13,25 +12,6 @@ _NON_MEDICINE_MENTIONS = {
     "pharmaceutical", "pharmaceuticals", "formulation", "formulations", "drug product",
     "manufacturing process", "process", "report", "medicine tablet", "tablet variant",
 }
-
-SYNONYM_MAP = {
-    "paracetamol": "acetaminophen",
-    "crocin": "acetaminophen",
-    "tylenol": "acetaminophen",
-    "dolo": "acetaminophen",
-    "calpol": "acetaminophen",
-    "panadol": "acetaminophen",
-    "aspirin": "acetylsalicylic acid",
-    "disprin": "acetylsalicylic acid",
-    "advil": "ibuprofen",
-    "motrin": "ibuprofen",
-    "nurofen": "ibuprofen",
-}
-
-_EQUIVALENCE: dict[str, set[str]] = defaultdict(set)
-for _alias, _canonical in SYNONYM_MAP.items():
-    _EQUIVALENCE[_alias].add(_canonical)
-    _EQUIVALENCE[_canonical].add(_alias)
 
 LLMChat = Callable[[list[dict]], str]
 
@@ -60,6 +40,7 @@ def check_scope(vocab: dict, llm_chat: LLMChat, query: str) -> dict:
         return _blocked("Scope classifier returned invalid JSON; retrieval was blocked.")
 
     def exact(values) -> list[str]:
+        """Only vocabulary-attested names pass; any LLM-invented name is dropped here."""
         out = set()
         for x in (values or []):
             if not isinstance(x, str):
@@ -67,11 +48,6 @@ def check_scope(vocab: dict, llm_chat: LLMChat, query: str) -> dict:
             cleaned = str(x).strip().casefold()
             if cleaned in vocab:
                 out.add(cleaned)
-                continue
-            for alt in _EQUIVALENCE.get(cleaned, ()):
-                if alt in vocab:
-                    out.add(alt)
-                    break
         return sorted(out)
 
     matched = exact(scope.get("matched_handbook_ingredients"))
