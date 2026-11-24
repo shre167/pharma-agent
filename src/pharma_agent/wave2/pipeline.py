@@ -48,9 +48,9 @@ def _generate(runtime, query: str, run_id: str, origin: str, on_event: EventFn) 
     # 1. Medicine identity (explicit name OR description) validated against handbook vocabulary.
     scope = check_scope(runtime.kb.vocab, runtime.services.llm_chat, query)
     emit("scope", scope)
-    if not scope.get("generic_names"):
+    if not scope.get("is_medicine_request"):
         return early("REFUSED", scope=scope,
-                     reason=scope.get("reason", "No sufficiently supported medicine identity was found."))
+                     reason=scope.get("reason", "Out of scope: request does not appear to be an in-scope pharmaceutical medicine or formulation request."))
 
     # 2. Input guard (prompt injection, fabrication, GxP falsification, ...).
     guard = check_input_with_llm(runtime.services.llm_chat, query)

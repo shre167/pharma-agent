@@ -20,7 +20,7 @@ def generate_report(llm_chat: Callable, report_request: str, selected: list[dict
     for i, e in enumerate(selected, 1):
         m = e["metadata"]
         blocks.append(f"[E{i}] {m.get('formulation_name')} | {m.get('chunk_type')} | "
-                      f"formulation_id={m.get('formulation_id')} | {e.get('citation')}\n{e['text'][:6000]}")
+                      f"formulation_id={m.get('formulation_id')} | {e.get('citation')}\n{e['text'][:2500]}")
     user_msg = (
         f"REPORT REQUEST:\n{report_request}\n\n"
         f"TITLE: {classification.get('report_title')}\n"

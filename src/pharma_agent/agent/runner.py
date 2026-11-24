@@ -119,37 +119,37 @@ def ask_agent(runtime, query: str, max_iterations: Optional[int] = None,
     if on_event:
         on_event("scope", scope)
 
-    if not scope.get("generic_names"):
-        return {"status": "NEEDS_MEDICINE_NAME", "scope": scope, "tool_calls": [],
-                "answer": ("I could not identify one sufficiently supported medicine from the name or description. "
-                           "Please provide more identifying details. No handbook tools were called and no report was generated.")}
-    if not scope["is_medicine_request"]:
+    if not scope.get("is_medicine_request"):
         return {"status": "OUT_OF_SCOPE", "scope": scope, "tool_calls": [],
                 "answer": OUT_OF_SCOPE_MSG + f"\n\n_Reason: {scope.get('reason', '')}_"}
 
-    matches = runtime.kb.handbook_matches(scope["generic_names"])
-    mention = ", ".join(scope["medicine_mentions"])
-    if not matches:
-        ids = scope.get("active_ingredients_identified", [])
-        if ids:
-            return {"status": "NOT_IN_HANDBOOK", "scope": scope, "tool_calls": [],
-                    "answer": (f"'{mention}' was recognised as a medicine (active ingredient(s): {', '.join(ids)}), "
-                               "but the handbook has no matching formulation. No retrieval or report generation was run.")}
-        return {"status": "UNRESOLVED_MEDICINE", "scope": scope, "tool_calls": [],
-                "answer": f"The medicine '{mention}' could not be resolved to a handbook ingredient. "
-                          "No retrieval or report generation was run."}
+    generic_names = scope.get("generic_names", [])
+    if generic_names:
+        matches = runtime.kb.handbook_matches(generic_names)
+        mention = ", ".join(scope.get("medicine_mentions", [])) or ", ".join(generic_names)
+        if not matches:
+            ids = scope.get("active_ingredients_identified", [])
+            if ids:
+                return {"status": "NOT_IN_HANDBOOK", "scope": scope, "tool_calls": [],
+                        "answer": (f"'{mention}' was recognised as a medicine (active ingredient(s): {', '.join(ids)}), "
+                                   "but the handbook has no matching formulation. No retrieval or report generation was run.")}
+            return {"status": "UNRESOLVED_MEDICINE", "scope": scope, "tool_calls": [],
+                    "answer": f"The medicine '{mention}' could not be resolved to a handbook ingredient. "
+                              "No retrieval or report generation was run."}
+    else:
+        matches = []
 
     session = runtime.new_session()
     session.allowed = True          # tools are authorised only after identity validation
-    session.generic_names = scope["generic_names"]
+    session.generic_names = generic_names
     context = (
         "\n\n[RESOLVED CONTEXT - validated by the intake gate]\n"
-        f"Medicine identity: {', '.join(scope['medicine_mentions'])}\n"
+        f"Medicine identity: {', '.join(scope.get('medicine_mentions', [])) or 'General pharmaceutical request'}\n"
         f"Identification method: {scope.get('identification_method', 'unknown')}\n"
         f"Identification confidence: {scope.get('confidence', 'unknown')}\n"
-        f"Resolved handbook ingredient names: {', '.join(scope['generic_names'])}\n"
-        "Matching handbook formulation headings:\n- " + "\n- ".join(matches[:25]) +
-        "\nIf the variant the user wants is ambiguous, cover every matching variant separately "
+        f"Resolved handbook ingredient names: {', '.join(generic_names) if generic_names else 'N/A (general pharma manufacturing)'}\n"
+        + (("Matching handbook formulation headings:\n- " + "\n- ".join(matches[:25])) if matches else "General manufacturing inquiry; search handbook documents as needed.")
+        + "\nIf the variant the user wants is ambiguous, cover every matching variant separately "
         "and record the ambiguity under evidence gaps. Do not ask the user questions."
     )
     result = _run_agent(runtime, session, query.strip() + context, max_iterations, on_event)

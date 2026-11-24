@@ -1,4 +1,4 @@
-"""Fail-closed intake gate: resolve the medicine (by name OR description) against handbook vocabulary."""
+"""Intake gate: resolve medicine identity (by explicit name or description) or general pharma query against handbook vocabulary."""
 from __future__ import annotations
 
 import re
@@ -11,6 +11,20 @@ _NON_MEDICINE_MENTIONS = {
     "medicine", "medicines", "tablet", "tablets", "capsule", "capsules", "drug", "drugs",
     "pharmaceutical", "pharmaceuticals", "formulation", "formulations", "drug product",
     "manufacturing process", "process", "report", "medicine tablet", "tablet variant",
+}
+
+SYNONYM_MAP = {
+    "paracetamol": "acetaminophen",
+    "crocin": "acetaminophen",
+    "tylenol": "acetaminophen",
+    "dolo": "acetaminophen",
+    "calpol": "acetaminophen",
+    "panadol": "acetaminophen",
+    "aspirin": "acetylsalicylic acid",
+    "disprin": "acetylsalicylic acid",
+    "advil": "ibuprofen",
+    "motrin": "ibuprofen",
+    "nurofen": "ibuprofen",
 }
 
 LLMChat = Callable[[list[dict]], str]
@@ -26,11 +40,7 @@ def _blocked(reason: str) -> dict:
 
 
 def check_scope(vocab: dict, llm_chat: LLMChat, query: str) -> dict:
-    """Identify explicit or description-implied medicine identity, validated against `vocab`.
-
-    Only an exact handbook-vocabulary entry can open the gate. Descriptions need a single
-    high/medium-confidence ingredient; explicit names must literally occur in the query.
-    """
+    """Identify explicit or description-implied medicine identity or general pharma query validated against `vocab`."""
     vocab_list = "\n".join(sorted(vocab))
     raw = llm_chat([
         {"role": "system", "content": SCOPE_PROMPT},
@@ -44,11 +54,20 @@ def check_scope(vocab: dict, llm_chat: LLMChat, query: str) -> dict:
         return _blocked("Scope classifier returned invalid JSON; retrieval was blocked.")
 
     def exact(values) -> list[str]:
-        return sorted({str(x).strip().casefold() for x in (values or [])
-                       if isinstance(x, str) and str(x).strip().casefold() in vocab})
+        out = set()
+        for x in (values or []):
+            if not isinstance(x, str):
+                continue
+            cleaned = str(x).strip().casefold()
+            if cleaned in vocab:
+                out.add(cleaned)
+            elif cleaned in SYNONYM_MAP and SYNONYM_MAP[cleaned] in vocab:
+                out.add(SYNONYM_MAP[cleaned])
+        return sorted(out)
 
     matched = exact(scope.get("matched_handbook_ingredients"))
     active = exact(scope.get("active_ingredients_identified"))
+    candidates = exact(scope.get("candidate_ingredients"))
 
     q = re.sub(r"\s+", " ", str(query or "")).strip().casefold()
     explicit = []
@@ -59,18 +78,33 @@ def check_scope(vocab: dict, llm_chat: LLMChat, query: str) -> dict:
                 explicit.append(name)
 
     method = str(scope.get("identification_method") or ("explicit_name" if explicit else "description")).strip().casefold()
-    if method not in {"explicit_name", "description"}:
+    if method not in {"explicit_name", "description", "general_pharma"}:
         method = "explicit_name" if explicit else "description"
     confidence = str(scope.get("confidence", "low")).strip().casefold()
     if confidence not in {"high", "medium", "low"}:
-        confidence = "low"
+        confidence = "medium"
 
+    # Fallbacks for ingredients
     if not matched and active:
         matched = active
-    if method == "description":
-        verified = matched if len(matched) == 1 and confidence in {"high", "medium"} else []
-    else:
+    if not matched and candidates:
+        matched = candidates
+
+    is_explicit_refusal = scope.get("is_medicine_request") is False
+
+    if is_explicit_refusal:
+        verified = []
+        is_medicine = False
+    elif method == "description":
+        # Support description-based queries with all matching handbook ingredients
+        verified = matched
+        is_medicine = bool(verified)
+    elif method == "general_pharma":
+        verified = matched
+        is_medicine = True
+    else:  # explicit_name
         verified = matched if explicit and matched else []
+        is_medicine = bool(verified)
 
     scope["identification_method"] = method
     scope["confidence"] = confidence
@@ -78,10 +112,9 @@ def check_scope(vocab: dict, llm_chat: LLMChat, query: str) -> dict:
     scope["matched_handbook_ingredients"] = verified
     scope["active_ingredients_identified"] = active or verified
     scope["generic_names"] = verified
-    scope["is_medicine_request"] = bool(verified)
+    scope["is_medicine_request"] = is_medicine
     scope["candidate_ingredients"] = scope.get("candidate_ingredients", []) or []
-    if not verified:
+    if not is_medicine:
         scope["reason"] = scope.get("reason") or (
-            "The description did not produce one sufficiently confident active ingredient "
-            "that exactly matches the handbook vocabulary.")
+            "The request does not appear to be an in-scope pharmaceutical medicine or formulation request.")
     return scope

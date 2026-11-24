@@ -16,25 +16,14 @@ from pharma_agent.wave2.pipeline import run_generation  # noqa: E402
 setup_page("Generate report")
 runtime = get_runtime()
 
-EXAMPLES = {
-    "Brand name": "What is the manufacturing process for Crocin tablets?",
-    "Generic + report": "Prepare a cited manufacturing design report for acetaminophen tablets, including BOM, process, equipment and quality evidence.",
-    "Description only": ("Prepare a manufacturing design report for an immediate-release oral tablet used to relieve "
-                         "mild to moderate pain and reduce fever (non-opioid analgesic/antipyretic)."),
-    "Out of scope (refused)": "What is the manufacturing process for Cadbury Gems?",
-}
-
 st.title("💊 Pharma Manufacturing Design Report Agent")
 st.caption("Evidence-backed drafts from the handbook. Medicine + variant is identified first; no match means decline, "
            "missing data becomes a stated gap. Every draft needs human review - this is not validated manufacturing software.")
 
 st.session_state.setdefault("query_text", "")
-cols = st.columns(len(EXAMPLES))
-for col, (label, text) in zip(cols, EXAMPLES.items()):
-    col.button(label, use_container_width=True, on_click=lambda t=text: st.session_state.update(query_text=t))
 
 query = st.text_area("Your request", key="query_text", height=130,
-                     placeholder="Name a medicine (brand or generic) or describe it in detail...")
+                     placeholder="Enter any pharmaceutical manufacturing question, describe a medicine (by indication/purpose), or name a formulation...")
 
 if st.button("Generate report", type="primary", disabled=not query.strip()):
     with st.status("Running agent...", expanded=True) as status:

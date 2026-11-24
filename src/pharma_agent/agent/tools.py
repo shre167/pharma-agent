@@ -11,7 +11,7 @@ from .session import AgentSession
 
 def make_tools(session: AgentSession) -> list:
     @tool
-    def find_documents(search_query: str, top_k: int = 10, focus: str = "all",
+    def find_documents(search_query: str, top_k: int = 5, focus: str = "all",
                        alternate_names: Optional[List[str]] = None) -> str:
         """Search the pharmaceutical handbook for matching medicine/formulation evidence. Pass generic/chemical or alternate names in alternate_names. Repeat with refined queries when evidence is incomplete or ambiguous."""
         return json.dumps(session.find_documents(search_query, top_k, focus, alternate_names), ensure_ascii=False)

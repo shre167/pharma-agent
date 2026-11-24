@@ -70,8 +70,8 @@ def verify_report(llm_chat: Callable, report_text: str, selected_evidence: list[
         "evidence": [{"source": e.get("metadata", {}).get("source"),
                       "page": e.get("metadata", {}).get("page"),
                       "formulation": e.get("metadata", {}).get("formulation_name"),
-                      "text": e.get("text", "")[:3500]} for e in selected_evidence[:15]],
-        "draft_report": report_text[:14000],
+                      "text": e.get("text", "")[:1500]} for e in selected_evidence[:8]],
+        "draft_report": report_text[:7000],
     }
     try:
         raw = llm_chat([{"role": "system", "content": VERIFY_PROMPT},

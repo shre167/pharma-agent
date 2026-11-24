@@ -34,16 +34,16 @@ def test_explicit_name_must_appear_in_the_query():
     assert check_scope(VOCAB, llm, "make me a pain tablet report")["generic_names"] == []
 
 
-def test_description_needs_single_confident_match():
+def test_description_supports_matches_and_candidates():
     ok = fake_llm({"matched_handbook_ingredients": ["acetaminophen"],
                    "identification_method": "description", "confidence": "high"})
     assert check_scope(VOCAB, ok, "non-opioid analgesic antipyretic tablet")["generic_names"] == ["acetaminophen"]
     ambiguous = fake_llm({"matched_handbook_ingredients": ["acetaminophen", "ibuprofen"],
                           "identification_method": "description", "confidence": "high"})
-    assert check_scope(VOCAB, ambiguous, "pain tablet")["generic_names"] == []
+    assert check_scope(VOCAB, ambiguous, "pain tablet")["generic_names"] == ["acetaminophen", "ibuprofen"]
     low = fake_llm({"matched_handbook_ingredients": ["acetaminophen"],
                     "identification_method": "description", "confidence": "low"})
-    assert check_scope(VOCAB, low, "pain tablet")["generic_names"] == []
+    assert check_scope(VOCAB, low, "pain tablet")["generic_names"] == ["acetaminophen"]
 
 
 def test_invalid_classifier_json_fails_closed():

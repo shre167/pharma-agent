@@ -25,13 +25,13 @@ class AgentSession:
     capture: Optional[dict] = None   # {"text", "path", "selected"} of the generated report
 
     # ---- find_documents ------------------------------------------------
-    def find_documents(self, search_query: str, top_k: int = 10, focus: str = "all",
+    def find_documents(self, search_query: str, top_k: int = 5, focus: str = "all",
                        alternate_names: Optional[List[str]] = None) -> dict:
         if not self.allowed:
             return {"error": "Medicine scope gate has not authorised retrieval.", "results": []}
         if not isinstance(search_query, str) or not search_query.strip():
             return {"error": "search_query must be a non-empty string", "results": []}
-        top_k = max(1, min(int(top_k or 10), 15))
+        top_k = max(1, min(int(top_k or 5), 10))
         chunk_types = None if focus in (None, "all") else [focus]
         alt = [n.strip() for n in (alternate_names or []) if isinstance(n, str) and n.strip()]
         found = self.kb.retrieve(" ".join([search_query.strip()] + alt), top_k=top_k, chunk_types=chunk_types)
@@ -54,7 +54,7 @@ class AgentSession:
                 "release_type": m.get("release_type"),
                 "source": m.get("source"), "page": m.get("page"), "pages": m.get("pages"),
                 "rrf_score": round(float(item.get("rrf_score", 0.0)), 6),
-                "text": item["text"][:3500],
+                "text": item["text"][:1800],
             })
         return {"query": search_query, "alternate_names": alt, "result_count": len(results), "results": results}
 
