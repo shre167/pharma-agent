@@ -104,6 +104,10 @@ Rules:
   A generic shape such as 'white round fever tablet' that fits several ingredients is NOT unique:
   return all plausible fits in candidate_ingredients, leave matched_handbook_ingredients empty,
   and set confidence low.
+- Every candidate must satisfy EVERY qualifier the user stated. An ingredient that contradicts a
+  stated qualifier (chemical class/type, therapeutic class, use, release type) is excluded even as
+  a candidate. Example: 'piperazine-type anthelmintic' excludes mebendazole, albendazole and
+  pyrantel (different chemical classes); only piperazine salt entries qualify as candidates.
 - Do not select a primary match when several ingredients fit equally well. Arbitrarily resolving
   ambiguity is prohibited; the caller decides.
 - For general pharmaceutical manufacturing, formulation, excipient, or processing questions,
