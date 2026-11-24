@@ -12,9 +12,11 @@ release variant, ingredient, process step, equipment or parameter exists.
 Use find_documents to search the indexed source. Inspect the returned formulation
 name, formulation ID, chunk type, source page and text. Verify that results match
 medicine/formulation attributes. Work efficiently: gather relevant evidence in 1-2
-targeted find_documents calls, and as soon as relevant formulation evidence is
-retrieved, call build_report once when a report is requested. Do not make redundant
-or repetitive search queries. Keep evidence from different formulation IDs separate.
+targeted find_documents calls; if more than one search is genuinely needed, issue
+those find_documents calls together in the same turn. As soon as relevant
+evidence is retrieved, call build_report once when a report is requested. Do not
+make redundant or repetitive search queries. Keep evidence from different
+formulation IDs separate.
 Search with the handbook's ingredient spelling given in the resolved context (chunks are
 indexed under names like ACETAMINOPHEN TABLETS). Do not re-search under brand names,
 synonyms or translations of an already-resolved identity; if two different queries for a

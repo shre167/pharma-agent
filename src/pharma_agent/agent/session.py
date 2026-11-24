@@ -73,7 +73,7 @@ class AgentSession:
                 "release_type": m.get("release_type"),
                 "source": m.get("source"), "page": m.get("page"), "pages": m.get("pages"),
                 "rrf_score": round(float(item.get("rrf_score", 0.0)), 6),
-                "text": item["text"][:1800],
+                "text": item["text"][:900],
             })
         response = {"query": search_query, "alternate_names": alt, "result_count": len(results), "results": results}
         if note:

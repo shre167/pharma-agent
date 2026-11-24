@@ -46,16 +46,18 @@ def _generate(runtime, query: str, run_id: str, origin: str, on_event: EventFn) 
         _log_run(settings, result)
         return result
 
-    # 1. Medicine identity (explicit name OR description) validated against handbook vocabulary.
-    scope = check_scope(runtime.kb.vocab, runtime.services.llm_chat, query)
-    emit("scope", scope)
+    # 1+2. Medicine identity (explicit name OR description) and the input guard are
+    # independent of each other, so both classifications run concurrently.
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        scope_future = pool.submit(check_scope, runtime.kb.vocab, runtime.services.llm_chat, query)
+        guard_future = pool.submit(check_input_with_llm, runtime.services.llm_chat, query)
+        scope = scope_future.result()
+        emit("scope", scope)
+        guard = guard_future.result()
+        emit("guard", guard)
     if not scope.get("is_medicine_request"):
         return early("REFUSED", scope=scope,
                      reason=scope.get("reason", "Out of scope: request does not appear to be an in-scope pharmaceutical medicine or formulation request."))
-
-    # 2. Input guard (prompt injection, fabrication, GxP falsification, ...).
-    guard = check_input_with_llm(runtime.services.llm_chat, query)
-    emit("guard", guard)
     if guard["action"] != "allow":
         return early("REFUSED" if guard["action"] == "refuse" else "ESCALATED", reason=guard["reason"], scope=scope)
 
