@@ -105,6 +105,25 @@ def test_find_then_build_uses_only_retrieved_evidence_ids(small_kb):
     assert s.capture["text"].startswith("REPORT")
 
 
+def test_unknown_focus_does_not_blind_the_search(small_kb):
+    s, _ = _session(small_kb)
+    found = s.find_documents("acetaminophen", focus="formulation chart")
+    assert found["result_count"] > 0
+    assert "not a valid evidence type" in found["note"]
+
+
+def test_focus_is_case_insensitive_and_falls_back_when_empty(small_kb):
+    s, _ = _session(small_kb)
+    lower = s.find_documents("acetaminophen", focus="bom")
+    assert lower["result_count"] == 2
+    assert {r["chunk_type"] for r in lower["results"]} == {"BOM"}
+    assert "note" not in lower
+
+    empty = s.find_documents("acetaminophen", focus="FORMULATION")
+    assert empty["result_count"] > 0
+    assert "no FORMULATION chunks matched" in empty["note"]
+
+
 def test_langchain_tools_are_exactly_two_and_return_json(small_kb):
     s, _ = _session(small_kb)
     tools = make_tools(s)

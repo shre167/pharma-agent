@@ -13,6 +13,8 @@ from ..utils import stable_id
 
 ReportWriter = Callable[[str, list, dict, Path], tuple]
 
+RETRIEVABLE_CHUNK_TYPES = {"BOM", "PROCESS", "FORMULATION"}
+
 
 @dataclass
 class AgentSession:
@@ -38,9 +40,20 @@ class AgentSession:
         if not isinstance(search_query, str) or not search_query.strip():
             return {"error": "search_query must be a non-empty string", "results": []}
         top_k = max(1, min(int(top_k or 5), 10))
-        chunk_types = None if focus in (None, "all") else [focus]
         alt = [n.strip() for n in (alternate_names or []) if isinstance(n, str) and n.strip()]
-        found = self.kb.retrieve(" ".join([search_query.strip()] + alt), top_k=top_k, chunk_types=chunk_types)
+        query = " ".join([search_query.strip()] + alt)
+
+        note = ""
+        focus_type = (focus or "all").strip().upper()
+        if focus_type not in RETRIEVABLE_CHUNK_TYPES:
+            if focus not in (None, "", "all"):
+                note = (f"focus '{focus}' is not a valid evidence type "
+                        f"(use BOM, PROCESS or FORMULATION); searched all evidence types.")
+            focus_type = None
+        found = self.kb.retrieve(query, top_k=top_k, chunk_types=[focus_type] if focus_type else None)
+        if not found and focus_type:
+            note = f"no {focus_type} chunks matched the query; searched all evidence types."
+            found = self.kb.retrieve(query, top_k=top_k, chunk_types=None)
         results = []
         for item in found:
             m = item["metadata"]
@@ -62,7 +75,10 @@ class AgentSession:
                 "rrf_score": round(float(item.get("rrf_score", 0.0)), 6),
                 "text": item["text"][:1800],
             })
-        return {"query": search_query, "alternate_names": alt, "result_count": len(results), "results": results}
+        response = {"query": search_query, "alternate_names": alt, "result_count": len(results), "results": results}
+        if note:
+            response["note"] = note
+        return response
 
     # ---- build_report --------------------------------------------------
     def build_report(self, report_request: str, evidence_ids: List[str],

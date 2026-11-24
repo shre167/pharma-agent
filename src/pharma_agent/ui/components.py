@@ -139,7 +139,8 @@ def render_tool_trace(tool_calls: list[dict]) -> None:
              "query / request": str(c["arguments"].get("search_query") or c["arguments"].get("report_request") or "")[:160],
              "focus": c["arguments"].get("focus", ""),
              "results": c["result_summary"].get("result_count"),
-             "status": c["result_summary"].get("status") or c["result_summary"].get("error") or ""}
+             "status": c["result_summary"].get("status") or c["result_summary"].get("error")
+             or c["result_summary"].get("note") or ""}
             for i, c in enumerate(tool_calls, 1)]
     st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
 

@@ -33,8 +33,11 @@ def _summarize_observation(text: str) -> dict:
             raise ValueError
     except Exception:
         return {"result_count": None, "status": None, "path": None, "error": str(text)[:200]}
-    return {"result_count": data.get("result_count"), "status": data.get("status"),
-            "path": data.get("path"), "error": data.get("error")}
+    summary = {"result_count": data.get("result_count"), "status": data.get("status"),
+               "path": data.get("path"), "error": data.get("error")}
+    if data.get("note"):
+        summary["note"] = data["note"]
+    return summary
 
 
 _OFFER_START = re.compile(

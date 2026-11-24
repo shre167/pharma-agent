@@ -47,8 +47,10 @@ if st.button("Generate report", type="primary", disabled=not query.strip()):
             elif stage == "tool_call":
                 args = payload["arguments"]
                 label = args.get("search_query") or args.get("report_request", "")
-                st.write(f"**Wave 1 · [{payload['index']}/{payload['max']}] {payload['tool']}** → {str(label)[:120]} "
-                         f"· `{payload['result_summary']}`")
+                focus = args.get("focus")
+                focus_txt = "" if focus in (None, "", "all") else f" focus=`{focus}`"
+                st.write(f"**Wave 1 · [{payload['index']}/{payload['max']}] {payload['tool']}** → {str(label)[:120]}"
+                         f"{focus_txt} · `{payload['result_summary']}`")
             elif stage == "report_start":
                 st.write(f"**Wave 1 · Drafting report** → Generating sections in parallel from `{payload.get('evidence_count')}` evidence chunks...")
             elif stage == "report_section":
