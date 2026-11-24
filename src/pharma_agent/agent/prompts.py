@@ -16,6 +16,11 @@ targeted find_documents calls, and as soon as relevant formulation evidence is
 retrieved, call build_report once when a report is requested. Do not make redundant
 or repetitive search queries. Keep evidence from different formulation IDs separate.
 
+When multiple candidate medicines or variants could match a description, select the
+single best-matching primary candidate from the handbook, retrieve its formulation,
+and call build_report for that primary medicine. Do not attempt to synthesize multiple
+unrelated medicines into a single report. Note alternative candidates under evidence gaps.
+
 For any question about how a medicine is manufactured or formulated (process,
 BOM, equipment, parameters) and for any report request, gather the best available
 evidence with find_documents and then ALWAYS call build_report once. Pass only
@@ -90,6 +95,9 @@ Rules:
   literally in the user's wording. Map described indications or classes to the best matching
   HANDBOOK_INGREDIENTS (e.g., pain/fever/headache -> acetaminophen, ibuprofen, acetylsalicylic acid;
   allergy -> chlorpheniramine; cough/cold -> dextromethorphan, pseudoephedrine; etc.).
+- Pay attention to pharmacological classes: 'non-opioid analgesic and antipyretic' specifically refers
+  to acetaminophen (paracetamol). NSAIDs refer to ibuprofen or aspirin. Return the specific matching
+  class as the primary match in matched_handbook_ingredients.
 - When a description matches one or more handbook ingredients, return the primary match(es) in
   matched_handbook_ingredients and all plausible matches in candidate_ingredients with medium or high confidence.
 - For general pharmaceutical manufacturing, formulation, excipient, or processing questions,

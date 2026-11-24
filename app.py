@@ -38,8 +38,13 @@ if st.button("Generate report", type="primary", disabled=not query.strip()):
                 label = args.get("search_query") or args.get("report_request", "")
                 st.write(f"**[{payload['index']}/{payload['max']}] {payload['tool']}** → {str(label)[:120]} "
                          f"· `{payload['result_summary']}`")
-            elif stage == "verify" and payload.get("stage") == "done":
-                st.write(f"**Verification** → `{payload.get('verdict')}`")
+            elif stage == "report_start":
+                st.write(f"**Drafting report** → Synthesizing technical report from `{payload.get('evidence_count')}` evidence chunks...")
+            elif stage == "verify":
+                if payload.get("stage") == "start":
+                    st.write("**Verification** → Checking citations, PDF page numbers, and process claims...")
+                elif payload.get("stage") == "done":
+                    st.write(f"**Verification complete** → Verdict: `{payload.get('verdict')}`")
 
         try:
             result = run_generation(runtime, query, on_event=on_event)

@@ -63,10 +63,10 @@ class Services:
             raise ValueError("GE_API_KEY is missing. Set it in .env or enter it in the app sidebar.")
         self.settings = settings
         self.client = OpenAI(api_key=settings.ge_api_key, base_url=settings.llm_base_url,
-                             timeout=90.0, max_retries=3)
+                             timeout=180.0, max_retries=1)
         self.chat_model = ChatOpenAI(
             model=settings.llm_model, api_key=settings.ge_api_key, base_url=settings.llm_base_url,
-            temperature=settings.llm_temperature, timeout=90, max_retries=2, stream_usage=False,
+            temperature=settings.llm_temperature, timeout=180, max_retries=1, stream_usage=False,
         )
         self.embeddings = CapgeminiTitanEmbeddings(self.client, settings.embedding_model,
                                                    show_progress=show_embedding_progress)

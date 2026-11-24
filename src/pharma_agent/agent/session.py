@@ -23,6 +23,7 @@ class AgentSession:
     generic_names: list[str] = field(default_factory=list)
     evidence: dict[str, dict] = field(default_factory=dict)
     capture: Optional[dict] = None   # {"text", "path", "selected"} of the generated report
+    on_event: Optional[Callable[[str, dict], None]] = None
 
     # ---- find_documents ------------------------------------------------
     def find_documents(self, search_query: str, top_k: int = 5, focus: str = "all",
@@ -76,12 +77,21 @@ class AgentSession:
         if not selected:
             return {"error": "No valid retrieved evidence IDs were supplied. Search first; no report was generated."}
 
+        # Keep the most relevant chunks (max 5) to prevent context explosion and API timeouts
+        if len(selected) > 5:
+            selected = sorted(selected, key=lambda e: float(e.get("rrf_score", 0.0)), reverse=True)[:5]
+
         formulation_ids = {e["metadata"].get("formulation_id", "") for e in selected}
         classification = {
             "agent_interpretation": report_request,
             "known_evidence_gaps": known_gaps or [],
             "report_title": report_title or "Pharmaceutical Manufacturing Design Report",
         }
+        if self.on_event:
+            self.on_event("report_start", {
+                "evidence_count": len(selected),
+                "title": classification["report_title"],
+            })
         stub = re.sub(r"[^A-Za-z0-9_-]+", "_", report_title or "pharma_design_report").strip("_")[:60] or "report"
         output_path = self.wave1_dir / f"{stub}_{time.strftime('%Y%m%d_%H%M%S')}.md"
         report, saved_path = self.report_writer(report_request, selected, classification, output_path)

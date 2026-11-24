@@ -115,8 +115,9 @@ def ask_agent(runtime, query: str, max_iterations: Optional[int] = None,
         return {"status": "INVALID_INPUT", "answer": "The request is too long. Please shorten it and try again.", "tool_calls": []}
 
     max_iterations = max_iterations or runtime.settings.max_iterations
+    passed_scope = scope is not None
     scope = scope if scope is not None else check_scope(runtime.kb.vocab, runtime.services.llm_chat, query)
-    if on_event:
+    if on_event and not passed_scope:
         on_event("scope", scope)
 
     if not scope.get("is_medicine_request"):
@@ -140,6 +141,7 @@ def ask_agent(runtime, query: str, max_iterations: Optional[int] = None,
         matches = []
 
     session = runtime.new_session()
+    session.on_event = on_event
     session.allowed = True          # tools are authorised only after identity validation
     session.generic_names = generic_names
     context = (
