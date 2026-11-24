@@ -91,13 +91,21 @@ def check_scope(vocab: dict, llm_chat: LLMChat, query: str) -> dict:
         matched = candidates
 
     is_explicit_refusal = scope.get("is_medicine_request") is False
+    inconclusive = ""
 
     if is_explicit_refusal:
         verified = []
         is_medicine = False
+        inconclusive = "The description was too vague to identify a medicine."
     elif method == "description":
-        # Support description-based queries with all matching handbook ingredients
-        verified = matched
+        # Description-based identity must be conclusive: one ingredient, high confidence.
+        # Otherwise fail closed and surface the candidates instead of picking one.
+        if confidence == "high" and len(matched) == 1:
+            verified = matched
+        else:
+            verified = []
+            inconclusive = ("The description was not conclusive. Candidates considered: "
+                            + ", ".join(candidates or matched) + ". Please name the medicine explicitly.")
         is_medicine = bool(verified)
     elif method == "general_pharma":
         verified = matched
@@ -115,6 +123,9 @@ def check_scope(vocab: dict, llm_chat: LLMChat, query: str) -> dict:
     scope["is_medicine_request"] = is_medicine
     scope["candidate_ingredients"] = scope.get("candidate_ingredients", []) or []
     if not is_medicine:
-        scope["reason"] = scope.get("reason") or (
-            "The request does not appear to be an in-scope pharmaceutical medicine or formulation request.")
+        if method == "description" and inconclusive:
+            scope["reason"] = scope.get("reason") or inconclusive
+        else:
+            scope["reason"] = scope.get("reason") or (
+                "The request does not appear to be an in-scope pharmaceutical medicine or formulation request.")
     return scope

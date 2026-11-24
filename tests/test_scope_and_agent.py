@@ -37,13 +37,29 @@ def test_explicit_name_must_appear_in_the_query():
 def test_description_supports_matches_and_candidates():
     ok = fake_llm({"matched_handbook_ingredients": ["acetaminophen"],
                    "identification_method": "description", "confidence": "high"})
-    assert check_scope(VOCAB, ok, "non-opioid analgesic antipyretic tablet")["generic_names"] == ["acetaminophen"]
-    ambiguous = fake_llm({"matched_handbook_ingredients": ["acetaminophen", "ibuprofen"],
-                          "identification_method": "description", "confidence": "high"})
-    assert check_scope(VOCAB, ambiguous, "pain tablet")["generic_names"] == ["acetaminophen", "ibuprofen"]
+    scope = check_scope(VOCAB, ok, "non-opioid analgesic antipyretic tablet")
+    assert scope["generic_names"] == ["acetaminophen"] and scope["is_medicine_request"]
+
+
+def test_ambiguous_description_fails_closed_and_reports_candidates():
+    # Live regression: 'white round fever tablet' -> single pick at medium confidence must NOT open the gate.
+    medium = fake_llm({"matched_handbook_ingredients": ["acetaminophen"],
+                       "candidate_ingredients": ["acetaminophen", "ibuprofen"],
+                       "identification_method": "description", "confidence": "medium"})
+    scope = check_scope(VOCAB, medium, "prepare a report for a white round fever tablet")
+    assert scope["generic_names"] == [] and not scope["is_medicine_request"]
+    assert "not conclusive" in scope["reason"] and "ibuprofen" in scope["reason"]
+
+    multi = fake_llm({"matched_handbook_ingredients": ["acetaminophen", "ibuprofen"],
+                      "identification_method": "description", "confidence": "high"})
+    scope = check_scope(VOCAB, multi, "pain tablet")
+    assert scope["generic_names"] == [] and not scope["is_medicine_request"]
+    assert "not conclusive" in scope["reason"]
+
     low = fake_llm({"matched_handbook_ingredients": ["acetaminophen"],
                     "identification_method": "description", "confidence": "low"})
-    assert check_scope(VOCAB, low, "pain tablet")["generic_names"] == ["acetaminophen"]
+    scope = check_scope(VOCAB, low, "pain tablet")
+    assert scope["generic_names"] == [] and not scope["is_medicine_request"]
 
 
 def test_invalid_classifier_json_fails_closed():

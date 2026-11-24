@@ -15,6 +15,10 @@ medicine/formulation attributes. Work efficiently: gather relevant evidence in 1
 targeted find_documents calls, and as soon as relevant formulation evidence is
 retrieved, call build_report once when a report is requested. Do not make redundant
 or repetitive search queries. Keep evidence from different formulation IDs separate.
+Search with the handbook's ingredient spelling given in the resolved context (chunks are
+indexed under names like ACETAMINOPHEN TABLETS). Do not re-search under brand names,
+synonyms or translations of an already-resolved identity; if two different queries for a
+resolved identity both return zero results, stop searching and report the evidence gap.
 
 When multiple candidate medicines or variants could match a description, select the
 single best-matching primary candidate from the handbook, retrieve its formulation,
@@ -92,14 +96,16 @@ Return ONLY valid JSON with keys:
 
 Rules:
 - Description-based identification IS fully supported. Do not require the ingredient name to occur
-  literally in the user's wording. Map described indications or classes to the best matching
+  literally in the user's wording. Map described indications or classes to the matching
   HANDBOOK_INGREDIENTS (e.g., pain/fever/headache -> acetaminophen, ibuprofen, acetylsalicylic acid;
   allergy -> chlorpheniramine; cough/cold -> dextromethorphan, pseudoephedrine; etc.).
-- Pay attention to pharmacological classes: 'non-opioid analgesic and antipyretic' specifically refers
-  to acetaminophen (paracetamol). NSAIDs refer to ibuprofen or aspirin. Return the specific matching
-  class as the primary match in matched_handbook_ingredients.
-- When a description matches one or more handbook ingredients, return the primary match(es) in
-  matched_handbook_ingredients and all plausible matches in candidate_ingredients with medium or high confidence.
+- confidence high means the description UNIQUELY identifies ONE handbook ingredient (e.g.
+  'non-opioid analgesic and antipyretic' -> acetaminophen; NSAID -> ibuprofen or acetylsalicylic acid).
+  A generic shape such as 'white round fever tablet' that fits several ingredients is NOT unique:
+  return all plausible fits in candidate_ingredients, leave matched_handbook_ingredients empty,
+  and set confidence low.
+- Do not select a primary match when several ingredients fit equally well. Arbitrarily resolving
+  ambiguity is prohibited; the caller decides.
 - For general pharmaceutical manufacturing, formulation, excipient, or processing questions,
   set is_medicine_request to true and identification_method to general_pharma.
 - Explicit brand names should be resolved to their generic ingredients (e.g. Crocin, Tylenol, Dolo -> acetaminophen; Advil -> ibuprofen; Aspirin -> acetylsalicylic acid).
