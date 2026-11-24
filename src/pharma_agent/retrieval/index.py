@@ -26,7 +26,7 @@ def fingerprint(settings: Settings, chunks: list[dict]) -> dict:
         "pdf_sha256": {p.name: sha256_file(p) for p in pdfs},
         "chunks_sha256": chunk_hash,
         "embedding_model": settings.embedding_model,
-        "embedding_endpoint": settings.llm_base_url,
+        "embedding_endpoint": settings.embedding_base_url,
         "chunk_count": len(chunks),
         "chunking_config": {"version": CHUNKING_VERSION,
                             "max_process_steps_per_chunk": MAX_PROCESS_STEPS_PER_CHUNK},

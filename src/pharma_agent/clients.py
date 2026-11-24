@@ -1,4 +1,4 @@
-"""Capgemini-backed LLM, chat helper and Titan embeddings."""
+"""OpenAI-compatible chat client, chat helper and embeddings adapter."""
 from __future__ import annotations
 
 import time
@@ -14,8 +14,9 @@ from .config import Settings
 from .observability import trace_inputs, trace_output
 
 
-class CapgeminiTitanEmbeddings(Embeddings):
-    """LangChain Embeddings adapter for Titan served by Capgemini's /embeddings API."""
+class OpenAICompatEmbeddings(Embeddings):
+    """LangChain Embeddings adapter for OpenAI-compatible /embeddings endpoints
+    (Titan on the Capgemini gateway, mistral-embed on api.mistral.ai, etc.)."""
 
     def __init__(self, api_client: OpenAI, model: str, batch_size: int = 16, show_progress: bool = False):
         self.api_client = api_client
@@ -77,8 +78,8 @@ class Services:
             model=settings.llm_model, api_key=settings.ge_api_key, base_url=settings.llm_base_url,
             temperature=settings.llm_temperature, timeout=180, max_retries=1, stream_usage=False,
         )
-        self.embeddings = CapgeminiTitanEmbeddings(self.embedding_client, settings.embedding_model,
-                                                   show_progress=show_embedding_progress)
+        self.embeddings = OpenAICompatEmbeddings(self.embedding_client, settings.embedding_model,
+                                                 show_progress=show_embedding_progress)
 
     def llm_chat(self, messages: list[dict], response_format: Any = None) -> str:
         return _chat_call(self.client, self.settings.llm_model, messages, response_format)

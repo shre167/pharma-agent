@@ -75,8 +75,9 @@ def get_runtime() -> Runtime:
     with st.sidebar:
         st.header("Connection")
         if not api_key:
-            key = st.text_input("Capgemini GE_API_KEY", type="password",
-                                help="Or put GE_API_KEY in .env (see .env.example).")
+            key = st.text_input("LLM API key (GE_API_KEY)", type="password",
+                                help="Key for LLM_BASE_URL, e.g. a Mistral or Capgemini gateway key; "
+                                     "or put GE_API_KEY in .env (see .env.example).")
             if key:
                 st.session_state["ge_api_key"] = key.strip()
                 st.rerun()
@@ -94,7 +95,7 @@ def get_runtime() -> Runtime:
                 st.rerun()
 
     if not api_key:
-        st.info("Enter your Capgemini `GE_API_KEY` in the sidebar (or set it in `.env`) to begin.")
+        st.info("Enter your `LLM_BASE_URL` API key in the sidebar (or set `GE_API_KEY` in `.env`) to begin.")
         st.stop()
     ls_key = st.session_state.get("ls_key") or settings.langsmith_api_key
     try:
