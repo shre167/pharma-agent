@@ -83,14 +83,14 @@ def check_scope(vocab: dict, llm_chat: LLMChat, query: str) -> dict:
         is_medicine = False
         inconclusive = "The description was too vague to identify a medicine."
     elif method == "description":
-        # Vague descriptions fail closed. Substantive descriptions resolve to one or more
-        # handbook ingredients; when several match, the agent covers every variant and
-        # records the ambiguity as an evidence gap instead of the gate refusing.
-        if matched and confidence in {"high", "medium"}:
+        # A description that maps to at least one handbook ingredient is processed: one match
+        # resolves it, several matches let the agent cover every variant with the ambiguity
+        # recorded. Refusal only when nothing maps to the handbook vocabulary.
+        if matched:
             verified = matched
         else:
             verified = []
-            inconclusive = ("The description was too vague to identify a handbook ingredient. "
+            inconclusive = ("The description could not be matched to any handbook ingredient. "
                             "Candidates considered: " + ", ".join(candidates or matched)
                             + ". Please describe the medicine more specifically or name it.")
         is_medicine = bool(verified)

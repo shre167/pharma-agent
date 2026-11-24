@@ -99,17 +99,17 @@ Rules:
   literally in the user's wording. Map described indications, classes, or formulation attributes to
   the matching HANDBOOK_INGREDIENTS (e.g., pain/fever/headache -> acetaminophen, ibuprofen,
   acetylsalicylic acid; allergy -> chlorpheniramine; cough/cold -> dextromethorphan; etc.).
-- A substantive description MUST be addressed: when it contains at least one distinguishing
-  attribute (chemical class, therapeutic class, dosage form, release type, manufacturing technique
-  such as wet granulation or direct compression, strength, or combination context), resolve it —
-  put EVERY handbook ingredient that satisfies every stated attribute into
+- For ANY request that describes a medicine product (by indication, class, dosage form, release
+  type, manufacturing technique, strength, appearance, combination context, or however partially),
+  ALWAYS put every handbook ingredient that plausibly satisfies the description into
   matched_handbook_ingredients, set identification_method to description, and use confidence high
-  when exactly one ingredient survives or medium when several survive (several matches are valid:
-  the caller covers each variant separately and records the ambiguity).
-- Vague descriptions fail closed. If the description carries no distinguishing attribute beyond a
-  generic appearance or a broad indication (e.g. only 'white round tablet for fever') that could
-  apply to several unrelated products, return the plausible ones in candidate_ingredients, leave
-  matched_handbook_ingredients empty, and set confidence low.
+  when exactly one ingredient fits or medium when several fit (several matches are valid: each
+  variant is covered separately with the ambiguity recorded). Descriptions are never refused as
+  'vague' while at least one handbook ingredient plausibly satisfies them.
+- Put ingredients that were considered but contradict a stated qualifier into
+  candidate_ingredients instead, and explain the exclusion in 'reason'.
+- Only when the text describes no identifiable medicine product at all, leave
+  matched_handbook_ingredients empty and set confidence low.
 - Every candidate must satisfy EVERY qualifier the user stated. An ingredient that contradicts a
   stated qualifier (chemical class/type, therapeutic class, use, release type) is excluded even as
   a candidate. Example: 'piperazine-type anthelmintic' excludes mebendazole, albendazole and

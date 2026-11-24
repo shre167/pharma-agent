@@ -77,18 +77,26 @@ def test_substantive_descriptions_run_even_when_several_variants_match():
     assert scope["generic_names"] == ["acetaminophen", "ibuprofen"] and scope["is_medicine_request"]
 
 
-def test_vague_descriptions_fail_closed_and_report_candidates():
-    vague = fake_llm({"matched_handbook_ingredients": [],
-                      "candidate_ingredients": ["acetaminophen", "ibuprofen"],
-                      "identification_method": "description", "confidence": "low"})
-    scope = check_scope(VOCAB, vague, "prepare a report for a white round fever tablet")
+def test_descriptions_only_refuse_when_nothing_maps_to_the_handbook():
+    invented = fake_llm({"matched_handbook_ingredients": [],
+                         "candidate_ingredients": ["zorbexinol", "fluffoxime"],
+                         "identification_method": "description", "confidence": "medium"})
+    scope = check_scope(VOCAB, invented, "prepare a report for a zorbex tablet")
     assert scope["generic_names"] == [] and not scope["is_medicine_request"]
-    assert "too vague" in scope["reason"] and "ibuprofen" in scope["reason"]
+    assert "could not be matched" in scope["reason"]
 
-    low = fake_llm({"matched_handbook_ingredients": ["acetaminophen"],
+
+def test_description_runs_regardless_of_confidence_when_a_handbook_ingredient_maps():
+    low = fake_llm({"matched_handbook_ingredients": [],
+                    "candidate_ingredients": ["acetaminophen"],
                     "identification_method": "description", "confidence": "low"})
-    scope = check_scope(VOCAB, low, "pain tablet")
-    assert scope["generic_names"] == [] and not scope["is_medicine_request"]
+    scope = check_scope(VOCAB, low, "fever and mild pain, conventional tablet")
+    assert scope["generic_names"] == ["acetaminophen"] and scope["is_medicine_request"]
+
+    low_direct = fake_llm({"matched_handbook_ingredients": ["acetaminophen"],
+                           "identification_method": "description", "confidence": "low"})
+    scope = check_scope(VOCAB, low_direct, "pain tablet")
+    assert scope["generic_names"] == ["acetaminophen"] and scope["is_medicine_request"]
 
 
 def test_invalid_classifier_json_fails_closed():
