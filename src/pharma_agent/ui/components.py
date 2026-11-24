@@ -169,6 +169,38 @@ def _review_panel(settings, manifest: dict, key: str) -> None:
     if manifest["output_verdict"] != "PASS":
         st.warning("Automatic verification did not fully pass. You may still record a decision, but an approval "
                    "cannot finalise this report.")
+
+    review = manifest.get("llm_review", {})
+    issues = (review or {}).get("issues") or []
+    passed_checks = sum(1 for c in manifest.get("checks", []) if c.get("passed"))
+    total_checks = len(manifest.get("checks", []))
+    evidence_count = len(manifest.get("evidence", []))
+    st.markdown(f"#### Decision summary — everything you need in one glance")
+    st.markdown(
+        f"- **Auto-verdict:** `{manifest['output_verdict']}` · **Checks:** {passed_checks}/{total_checks} passed · "
+        f"**LLM review issues:** {len(issues)} · **Evidence chunks:** {evidence_count}\n"
+        f"- **Query:** {manifest.get('query', '')[:200]}\n"
+        f"- **Status:** `{manifest['status']}` — only approve + all checks + verdict PASS finalises this report.")
+    if issues:
+        with st.expander(f"Flagged claims ({len(issues)})"):
+            render_checks([], review)
+    with st.expander("System-level evaluation snapshot (latest labelled run)"):
+        from pharma_agent.wave2.evaluation import EVAL_TARGETS, load_evaluations, summarize
+        evaluations = load_evaluations(settings)
+        if evaluations:
+            latest = sorted(evaluations)[-1]
+            observed = summarize(evaluations[latest])
+            rows = {k: {"observed": observed.get(k), "target": t}
+                    for k, t in [("outcome_accuracy", EVAL_TARGETS["outcome_accuracy"]),
+                                 ("retrieval_hit", EVAL_TARGETS["retrieval_hit_rate"]),
+                                 ("citation_integrity", EVAL_TARGETS["citation_integrity"]),
+                                 ("faithfulness", EVAL_TARGETS["faithfulness"]),
+                                 ("retrieval_relevancy", EVAL_TARGETS["retrieval_relevancy"])]}
+            st.dataframe(pd.DataFrame(rows).T, use_container_width=True)
+            st.caption(f"Latest labelled evaluation: “{latest}”. System quality context for your review — "
+                       "the decision below applies to this specific report.")
+        else:
+            st.caption("No labelled evaluation has been run yet (Evaluation & traces page).")
     with st.form(f"{key}_review_form"):
         reviewer = st.text_input("Reviewer name")
         comment = st.text_area("Comment (optional)")

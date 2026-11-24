@@ -93,3 +93,26 @@ def test_list_reports_filters(settings):
     assert [m["report_id"] for m in list_reports(settings, pending_only=True)] == ["p1"]
     assert len(list_reports(settings)) == 2
     assert load_report(settings, "p1")[1] == "# report"
+
+
+def test_case_set_hash_changes_when_the_set_changes():
+    from pharma_agent.wave2.evaluation import case_set_hash
+
+    base = [{"id": "P01", "query": "q", "expected": "report"}]
+    changed = [{"id": "P01", "query": "different query", "expected": "report"}]
+    assert case_set_hash(base) != case_set_hash(changed)
+    assert len(case_set_hash(base)) == 8
+
+
+def test_compare_evaluations_marks_the_case_set(settings):
+    from pharma_agent.wave2.evaluation import case_set_hash, compare_evaluations
+
+    rows = [{"evaluation": "e1", "case_id": "P01", "status": "REPORT_GENERATED_PENDING_REVIEW",
+             "outcome_accuracy": 1, "retrieval_hit": 1, "citation_integrity": 1,
+             "faithfulness": 0.9, "retrieval_relevancy": 0.6, "failure_count": 0,
+             "failure_notes": "", "latency_s": 1.0, "error": None,
+             "case_set": case_set_hash([{"id": "P01"}])}]
+    (settings.eval_dir / "e1_evaluation.json").write_text(json.dumps(rows), encoding="utf-8")
+    frame = compare_evaluations(settings)
+    assert frame.loc["e1", "case_set"] == case_set_hash([{"id": "P01"}])
+    assert frame.loc["e1", "outcome_accuracy"] == 1

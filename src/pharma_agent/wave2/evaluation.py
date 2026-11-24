@@ -1,6 +1,16 @@
-"""Labelled test-set evaluation (DeepEval + objective metrics). No simulated human approval."""
+"""Labelled test-set evaluation (DeepEval + objective metrics). No simulated human approval.
+
+Metrics are fixed in advance and each measures one required dimension:
+- outcome_accuracy      expected result vs observed status AND verification verdict (refusal
+                        behaviour included: refused/escalated cases are scored here)
+- retrieval_hit         gold ingredient/formulation term found in retrieved formulation names
+- citation_integrity    deterministic citation checks (pages exist, evidence tags valid)
+- faithfulness          DeepEval: report claims supported by retrieved context
+- retrieval_relevancy   DeepEval: retrieved context relevant to the query
+"""
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
 from pathlib import Path
@@ -14,11 +24,18 @@ from .storage import latest_runs, now_iso
 
 EVAL_TARGETS = {
     "outcome_accuracy": 1.0, "retrieval_hit_rate": 0.75, "citation_integrity": 1.0,
-    "faithfulness": 0.80, "retrieval_relevancy": 0.50, "refusal_accuracy": 1.0,
+    "faithfulness": 0.80, "retrieval_relevancy": 0.50,
 }
 
 METRIC_COLUMNS = ["outcome_accuracy", "retrieval_hit", "citation_integrity",
-                  "faithfulness", "retrieval_relevancy", "refusal_accuracy"]
+                  "faithfulness", "retrieval_relevancy"]
+
+
+def case_set_hash(cases: list[dict]) -> str:
+    """Identity of the evaluated case set; evaluations are comparable only when it matches."""
+    material = json.dumps([[c.get("id"), c.get("query"), c.get("expected")] for c in cases],
+                          sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:8]
 
 
 def load_eval_cases(settings) -> list[dict]:
@@ -89,14 +106,19 @@ def _evaluate_case(runtime, case: dict, name: str, judge) -> tuple[dict, list[st
     result = run_generation(runtime, case["query"], run_id=run_id, origin="evaluation")
     has_report = result.get("report") is not None
 
+    verdict = result.get("output_verdict")
     if case["expected"] == "report":
-        outcome_ok = has_report and result.get("status") in {
-            "REPORT_GENERATED_PENDING_REVIEW", "REPORT_GENERATED_NEEDS_REVIEW"}
+        # Consistent with the review gate: a report the verifier flagged is not a success.
+        outcome_ok = (has_report and result.get("status") in
+                      {"REPORT_GENERATED_PENDING_REVIEW", "REPORT_GENERATED_NEEDS_REVIEW"}
+                      and verdict == "PASS")
+        if has_report and verdict != "PASS":
+            failures.append(f"Report was produced but verification flagged it (verdict {verdict}).")
     elif case["expected"] == "refuse":
         outcome_ok = result.get("status") == "REFUSED"
     else:
         outcome_ok = result.get("status") in {"REFUSED", "ESCALATED"}
-    if not outcome_ok:
+    if (not outcome_ok) and not (case["expected"] == "report" and has_report and verdict != "PASS"):
         failures.append(f"Expected {case['expected']}; observed {result.get('status')}.")
 
     names = [str(e.get("formulation_name", "")).casefold() for e in result.get("evidence", [])]
@@ -132,7 +154,6 @@ def _evaluate_case(runtime, case: dict, name: str, judge) -> tuple[dict, list[st
         "outcome_accuracy": int(outcome_ok), "retrieval_hit": retrieval_hit,
         "citation_integrity": citation_ok, "faithfulness": faithfulness,
         "retrieval_relevancy": relevancy,
-        "refusal_accuracy": int(outcome_ok) if case["expected"] in {"refuse", "refuse_or_escalate"} else None,
     }
     deliverable = write_case_deliverable(case, result, metrics, failures,
                                          runtime.settings.eval_dir / name / case["id"])
@@ -149,6 +170,7 @@ def run_evaluation(runtime, name: str = "baseline", cases: Optional[list[dict]] 
     """Run the labelled test set against the current system. Each case gets its own deliverable.md."""
     settings = runtime.settings
     cases = cases or load_eval_cases(settings)
+    case_set = case_set_hash(cases)
     judge = _make_judge(runtime.services.llm_chat)
     rows = []
     for i, case in enumerate(cases, 1):
@@ -168,6 +190,7 @@ def run_evaluation(runtime, name: str = "baseline", cases: Optional[list[dict]] 
                    "status": "ERROR", **{k: None for k in METRIC_COLUMNS}, "failure_count": 1,
                    "failure_notes": failure, "deliverable_path": deliverable,
                    "trace_run_id": None, "trace_url": None, "latency_s": None, "error": repr(exc)}
+        row["case_set"] = case_set
         rows.append(row)
 
     path = settings.eval_dir / f"{name}_evaluation.json"
@@ -189,8 +212,15 @@ def summarize(frame: pd.DataFrame) -> pd.Series:
 
 
 def compare_evaluations(settings) -> pd.DataFrame:
-    """Optional before/after comparison; only meaningful after a documented system change."""
+    """Before/after comparison. A 'case_set' column marks which case set each run used;
+    metrics across runs with different case_set values are not comparable."""
     frames = load_evaluations(settings)
     if not frames:
         return pd.DataFrame()
-    return pd.DataFrame({name: summarize(df) for name, df in frames.items()}).T
+    cols = {}
+    for name, df in frames.items():
+        metrics = summarize(df)
+        metrics["case_set"] = (df["case_set"].iloc[0]
+                               if "case_set" in df.columns and len(df) else "?")
+        cols[name] = metrics
+    return pd.DataFrame(cols).T

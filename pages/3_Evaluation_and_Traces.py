@@ -47,7 +47,7 @@ with tab_results:
         st.subheader("Measured metrics vs targets")
         targets = {"outcome_accuracy": EVAL_TARGETS["outcome_accuracy"], "retrieval_hit": EVAL_TARGETS["retrieval_hit_rate"],
                    "citation_integrity": EVAL_TARGETS["citation_integrity"], "faithfulness": EVAL_TARGETS["faithfulness"],
-                   "retrieval_relevancy": EVAL_TARGETS["retrieval_relevancy"], "refusal_accuracy": EVAL_TARGETS["refusal_accuracy"]}
+                   "retrieval_relevancy": EVAL_TARGETS["retrieval_relevancy"]}
         st.dataframe(pd.DataFrame({"observed": observed, "target": pd.Series(targets)}), use_container_width=True)
         st.subheader("Per-case results")
         st.dataframe(df.drop(columns=["trace_run_id", "deliverable_path"], errors="ignore"),
