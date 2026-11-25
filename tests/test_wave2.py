@@ -45,6 +45,14 @@ def test_verdicts():
     assert verify_report(lambda m: "garbage", GOOD, EVIDENCE)[0] == "FLAG"   # LLM outage never silently passes
 
 
+def test_pp_style_citations_are_recognised():
+    # The agent prompt teaches "[Handbook, pp. X-Y]" - the verifier must read that format too.
+    report = "Acetaminophen 500 mg [E1] [Handbook, pp. 232-233]"
+    c = by_name(citation_checks(report, EVIDENCE))
+    assert c["citation_pages_exist_in_selected_evidence"]["passed"]
+    assert c["evidence_tags_match_selected_evidence"]["passed"]
+
+
 def test_input_guard_fails_closed():
     assert check_input_with_llm(lambda m: json.dumps({"action": "allow", "reason": "ok"}), "q")["action"] == "allow"
     assert check_input_with_llm(lambda m: "nonsense", "q")["action"] == "escalate"
@@ -125,3 +133,13 @@ def test_measure_report_quality_degrades_on_judge_failure():
     assert empty["ok"] is False and empty["faithfulness"] is None
     bad = measure_report_quality(lambda m: "garbage from the judge", "q", "report text", ["ctx"])
     assert bad["ok"] is False and bad["faithfulness"] is None and "DeepEval failed" in bad["note"]
+
+
+def test_pp_style_citations_are_recognised():
+    # The agent prompt teaches "[Handbook, pp. X-Y]" - the verifier must read that format too.
+    report = ("# Report\n\n## 2. Bill of materials\nAcetaminophen 500 mg [E1] [Handbook, pp. 74-75]")
+    evidence = [_evidence("ACETAMINOPHEN TABLETS", "BOM", page=74, pages="74-75")]
+    checks = citation_checks(report, evidence)
+    by_name = {c["name"]: c for c in checks}
+    assert by_name["citation_pages_exist_in_selected_evidence"]["passed"]
+    assert by_name["evidence_tags_match_selected_evidence"]["passed"]

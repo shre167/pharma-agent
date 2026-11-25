@@ -34,7 +34,10 @@ def citation_checks(report_text: str, selected_evidence: list[dict]) -> list[dic
 
     cited_pages: set[int] = set()
     # [ \t] (not \s) so a page number on the next line is never swallowed.
-    for match in re.finditer(r"PDF pages?[ \t]*([\d,\t –-]+)", report_text, re.I):
+    # Recognises "PDF page N", "pp. N-M" and "pages N" - every citation shape the
+    # prompts themselves instruct the model to produce.
+    for match in re.finditer(r"(?:PDF[ \t]+(?:pages?|pp\.?)|pp\.|pages?)[ \t:,]*(\d[\d,;\t \u2013-]*)",
+                             report_text, re.I):
         cited_pages |= expand_pages(match.group(1))
     bad_pages = sorted(cited_pages - evidence_pages)
     checks.append({
